@@ -71,6 +71,19 @@ Settings → Pages → Source: GitHub Actions
 
 ---
 
+## 手机与 PWA
+
+托管后手机直接访问 `https://<你的用户名>.github.io/dungeon-knight/`：
+
+1. 标题页点「全 屏」，Android Chrome 会进入全屏并尝试锁定横屏。
+2. Android Chrome 菜单 →「安装应用 / 添加到主屏幕」；iOS Safari 分享 →「添加到主屏幕」。之后从桌面图标启动即全屏无地址栏。
+3. 竖屏打开会提示旋转，点「竖屏继续」也能玩（系统锁定旋转时的逃生通道）。
+4. `manifest.json` 的 `start_url` / `scope` 都是相对路径，放在仓库子目录下也能正确安装。
+
+`file://` 双击打开时脚本会跳过 manifest 注入（否则控制台会报 CORS），此时只是不能“安装”，游戏照常玩。
+
+---
+
 ## 常见坑
 
 - **私有仓库**：Pages 需要 GitHub Pro / 付费计划；公开仓库免费。

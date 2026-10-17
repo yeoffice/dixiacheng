@@ -90,13 +90,25 @@ const Save = {
 
 /* ---------------------------- 输 入 ---------------------------- */
 const UI_BUTTONS = [];   // {x,y,r,id,label,down:false, onDown, visible}
+
+/* 设备探测：粗指针 / 多点触控设备开局即进入触屏模式。
+   否则手机玩家从 DOM 菜单点「开始冒险」进游戏时没有先在画布上按过，
+   touchMode 仍是 false，整套虚拟摇杆与动作按钮都不会出现。 */
+const IS_TOUCH_DEVICE = (() => {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) return true;
+    if (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) return true;
+    return typeof window !== 'undefined' && 'ontouchstart' in window;
+  } catch (e) { return false; }
+})();
+
 const Input = {
   keys: {}, pressed: {}, released: {},
   mouse: { x: VW / 2, y: VH / 2, down: false, clicked: false, right: false },
   move: { x: 0, y: 0 },
   aim: { x: 1, y: 0, angle: 0 },
   firing: false,
-  touchMode: false,
+  touchMode: IS_TOUCH_DEVICE,
   pointers: new Map(),
   stickMove: null, stickAim: null,
   init(cv) {
@@ -109,13 +121,20 @@ const Input = {
     addEventListener('keyup', e => { this.keys[e.code] = false; this.released[e.code] = true; });
     addEventListener('blur', () => { this.keys = {}; this.mouse.down = false; this.firing = false; this.pointers.clear(); this.stickMove = this.stickAim = null; });
 
+    /* 触摸落在任何位置（含 DOM 菜单按钮）都立刻切到触屏模式；
+       之后用鼠标点画布则切回鼠标模式，触屏笔记本两种都能用。 */
+    addEventListener('pointerdown', e => {
+      if (e.pointerType === 'touch' || e.pointerType === 'pen') this.touchMode = true;
+    }, true);
+
     const toLocal = e => {
       const r = canvas.getBoundingClientRect();
       return { x: (e.clientX - r.left) * (VW / r.width), y: (e.clientY - r.top) * (VH / r.height) };
     };
 
     canvas.addEventListener('pointerdown', e => {
-      if (e.pointerType === 'touch') this.touchMode = true;
+      if (e.pointerType === 'touch' || e.pointerType === 'pen') this.touchMode = true;
+      else if (e.pointerType === 'mouse' && !this.pointers.size) this.touchMode = false;
       const p = toLocal(e);
       canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
       // UI 按钮

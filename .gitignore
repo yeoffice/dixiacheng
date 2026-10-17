@@ -11,3 +11,4 @@ desktop.ini
 # test artifacts
 tools/out/
 tools/*.log
+tools/*.png

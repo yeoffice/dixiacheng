@@ -56,12 +56,21 @@ const UI = {
     slot1: [VW - 77, VH - 37, 27],
   },
 
-  setTouchVisible(v) {
+  /* 触屏按钮位置固定在 960×544 虚拟坐标里，但手机实际显示常常只有 0.6 倍，
+     半径按显示缩放反向补偿，保证手指点得到（物理直径接近 44~48px）。 */
+  refreshTouchLayout() {
+    const k = (typeof this.touchScale === 'number' && this.touchScale > 0) ? this.touchScale : 1;
+    const f = clamp(0.82 / k, 1, 1.28);
     for (const b of UI_BUTTONS) {
-      b.visible = v;
       const m = this.MOBILE_BTN[b.id];
-      if (v && m) { b.x = m[0]; b.y = m[1]; b.r = m[2]; }
+      if (!m) continue;
+      b.x = m[0]; b.y = m[1]; b.r = m[2] * f;
     }
+  },
+
+  setTouchVisible(v) {
+    if (v) this.refreshTouchLayout();
+    for (const b of UI_BUTTONS) b.visible = v;
   },
 
   mount(html) {
@@ -95,6 +104,10 @@ const UI = {
       </div>`;
     }).join('');
     const d = Save.data;
+    const fsLabel = (typeof View !== 'undefined' && View.isFull()) ? '退出全屏' : '全 屏';
+    const hintHtml = Input.touchMode
+      ? '左半屏拖动移动 · 右半屏拖动瞄准并自动开火<br>右下角按钮：技能 / 冲刺 / 换武器 · 点右上角「全屏」去掉浏览栏'
+      : '<span class="kbd">WASD</span> 移动 &nbsp; <span class="kbd">鼠标</span> 瞄准 &nbsp; <span class="kbd">左键</span> 射击/挥砍 &nbsp; <span class="kbd">空格</span> 冲刺 &nbsp; <span class="kbd">Q</span> 技能 &nbsp; <span class="kbd">E</span> 交互 &nbsp; <span class="kbd">1/2</span> 换武器';
     this.mount(`<div class="layer"><div class="panel" style="max-width:760px">
       <h1 class="title">地牢骑士<small>无尽回响</small></h1>
       <div class="sub">随机地牢 · ${WEAPONS.length} 件武器 · ${ENEMY_DEFS.filter(e => !e.hidden).length} 种敌人 · ${BOSS_DEFS.length} 位首领</div>
@@ -103,6 +116,7 @@ const UI = {
         <button class="btn primary" id="btnStart">开始冒险</button>
         <button class="btn" id="btnCodex">图 鉴</button>
         <button class="btn ghost" id="btnHelp">玩 法</button>
+        <button class="btn ghost" id="btnFs">${fsLabel}</button>
       </div>
       <div class="record">
         <span>最深层数 <b>${d.bestFloor || 0}</b></span>
@@ -110,10 +124,7 @@ const UI = {
         <span>总击杀 <b>${fmt(d.kills || 0)}</b></span>
         <span>冒险次数 <b>${d.runs || 0}</b></span>
       </div>
-      <div class="hint">
-        <span class="kbd">WASD</span> 移动 &nbsp; <span class="kbd">鼠标</span> 瞄准 &nbsp; <span class="kbd">左键</span> 射击/挥砍 &nbsp;
-        <span class="kbd">空格</span> 冲刺 &nbsp; <span class="kbd">Q</span> 技能 &nbsp; <span class="kbd">E</span> 交互 &nbsp; <span class="kbd">1/2</span> 换武器
-      </div>
+      <div class="hint">${hintHtml}</div>
     </div></div>`);
     // 头像
     for (const c of CHARACTERS) {
@@ -155,6 +166,25 @@ const UI = {
     start.onclick = () => { Sfx.resume(); Sfx.play('levelup'); Game.startRun(this.selectedChar); };
     this.root.querySelector('#btnCodex').onclick = () => { Sfx.play('select'); this.showCodex('weapons'); };
     this.root.querySelector('#btnHelp').onclick = () => { Sfx.play('select'); this.showHelp(); };
+    const fsBtn = this.root.querySelector('#btnFs');
+    if (fsBtn) {
+      if (typeof View !== 'undefined' && !View.supported()) fsBtn.style.opacity = '.6';
+      fsBtn.onclick = () => {
+        Sfx.play('select');
+        if (typeof View !== 'undefined') View.toggle();
+        setTimeout(() => { this.syncFsLabel(); }, 260);
+      };
+    }
+  },
+
+  /* 全屏按钮文案跟着真实全屏状态走 */
+  syncFsLabel() {
+    if (!this.root) return;
+    const on = typeof View !== 'undefined' && View.isFull();
+    const a = this.root.querySelector('#btnFs');
+    if (a) a.textContent = on ? '退出全屏' : '全 屏';
+    const b = this.root.querySelector('#btnFs2');
+    if (b) b.textContent = on ? '⛶ 退出全屏' : '⛶ 全屏';
   },
 
   /* =====================================================================
@@ -194,10 +224,10 @@ const UI = {
         </div>`;
       }).join('');
     }
-    this.mount(`<div class="layer"><div class="panel" style="width:800px">
+    this.mount(`<div class="layer"><div class="panel" style="max-width:800px">
       <h1 class="title" style="font-size:28px;letter-spacing:4px">地 牢 图 鉴</h1>
       <div class="tabs">${tabHtml}</div>
-      <div class="codex-grid scroll" style="max-height:340px">${body}</div>
+      <div class="codex-grid scroll" style="max-height:min(340px, 52vh)">${body}</div>
       <div class="row" style="margin-top:16px"><button class="btn primary" id="btnBack">返 回</button></div>
     </div></div>`);
     this.root.querySelectorAll('.tab').forEach(el => el.onclick = () => { Sfx.play('select'); this.showCodex(el.dataset.tab); });
@@ -228,9 +258,9 @@ const UI = {
      ===================================================================== */
   showHelp() {
     Game.state = 'help';
-    this.mount(`<div class="layer"><div class="panel" style="width:700px">
+    this.mount(`<div class="layer"><div class="panel" style="max-width:700px">
       <h1 class="title" style="font-size:26px;letter-spacing:4px">玩 法 说 明</h1>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:16px;font-size:12.5px;line-height:1.85;color:#b8b0d0">
+      <div class="help-grid">
         <div>
           <div style="color:#ffd257;font-weight:800;font-size:14px;margin-bottom:6px">操作</div>
           <span class="kbd">WASD</span> 移动 · <span class="kbd">鼠标</span> 瞄准<br>
@@ -239,7 +269,7 @@ const UI = {
           <span class="kbd">Q</span> 角色技能 · <span class="kbd">E</span> 交互<br>
           <span class="kbd">1</span>/<span class="kbd">2</span> 或滚轮 切换双武器<br>
           <span class="kbd">Esc</span> 暂停 · <span class="kbd">M</span> 静音<br>
-          手机：左半屏移动，右半屏瞄准并自动射击
+          手机：左半屏移动，右半屏瞄准并自动射击<br>点「全 屏」去掉地址栏，或把页面「添加到主屏幕」
         </div>
         <div>
           <div style="color:#ffd257;font-weight:800;font-size:14px;margin-bottom:6px">生存</div>
@@ -273,11 +303,13 @@ const UI = {
      ===================================================================== */
   showPause() {
     const s = Save.data.settings;
-    this.mount(`<div class="layer"><div class="panel" style="width:420px">
+    const fsOn = typeof View !== 'undefined' && View.isFull();
+    this.mount(`<div class="layer"><div class="panel" style="max-width:420px">
       <h1 class="title" style="font-size:30px;letter-spacing:8px">暂 停</h1>
       <div class="sub">第 ${Game.floor} 层 · ${floorName(Game.floor)}</div>
       <div class="col" style="margin-top:20px;align-items:stretch">
         <button class="btn primary" id="btnResume">继续冒险</button>
+        <button class="btn" id="btnFs2">${fsOn ? '⛶ 退出全屏' : '⛶ 全屏'}</button>
         <button class="btn" id="btnMusic">${s.music ? '♪ 音乐：开' : '♪ 音乐：关'}</button>
         <button class="btn" id="btnSfx">${s.sfx ? '🔊 音效：开' : '🔇 音效：关'}</button>
         <button class="btn ghost" id="btnQuit">放弃并返回标题</button>
@@ -285,6 +317,10 @@ const UI = {
       <div class="hint">按 Esc 继续 · 当前击杀 ${Game.runStats.kills} · 伤害 ${fmt(Game.runStats.damage)}</div>
     </div></div>`);
     this.root.querySelector('#btnResume').onclick = () => Game.resume();
+    this.root.querySelector('#btnFs2').onclick = () => {
+      if (typeof View !== 'undefined') View.toggle();
+      setTimeout(() => this.syncFsLabel(), 260);
+    };
     this.root.querySelector('#btnMusic').onclick = () => { Sfx.setMusic(!Sfx.musicEnabled); this.showPause(); };
     this.root.querySelector('#btnSfx').onclick = () => { Sfx.setSfx(!Sfx.enabled); this.showPause(); };
     this.root.querySelector('#btnQuit').onclick = () => { Game.quitToTitle(); };
@@ -324,7 +360,7 @@ const UI = {
     Game.state = 'gameover';
     this.setTouchVisible(false);
     const d = Save.data;
-    this.mount(`<div class="layer"><div class="panel" style="width:560px">
+    this.mount(`<div class="layer"><div class="panel" style="max-width:560px">
       <div class="over-title dead">冒 险 结 束</div>
       <div class="sub">你倒在了第 ${stats.floor} 层 · ${floorName(stats.floor)}</div>
       <div class="stat-grid">

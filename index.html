@@ -4,7 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#0b0a12">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="地牢骑士">
+<meta name="format-detection" content="telephone=no,email=no,address=no">
 <title>地牢骑士：无尽回响</title>
+<!-- manifest 由 JS 在 http(s) 下注入：file:// 直接打开时静态 manifest 会被 CORS 拦截 -->
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -12,7 +21,7 @@
   <canvas id="game" width="960" height="544"></canvas>
   <div id="domui"></div>
 </div>
-<div id="rotate-hint"><div class="rh-box">横屏体验更佳<br><span>请旋转设备</span></div></div>
+<div id="rotate-hint"><div class="rh-box">横屏体验更佳<br><span>请旋转设备；若系统锁定了竖屏，也可以直接继续</span><button class="btn primary rh-btn" id="rh-continue">竖屏继续</button></div></div>
 <script src="js/util.js"></script>
 <script src="js/art.js"></script>
 <script src="js/weapons.js"></script>
