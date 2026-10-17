@@ -34,6 +34,7 @@ const Net = {
   roomList: [],
   listErr: '',
   listTimer: null,
+  taken: new Set(),
 
   /* ---------------- 地址与工具 ---------------- */
   defaultUrl() {
@@ -289,6 +290,7 @@ const Net = {
     this.peers.clear();
     this.ghosts.clear();
     this.remote.clear();
+    this.taken.clear();
   },
 
   /* ---------------- 消息 ---------------- */
@@ -354,6 +356,7 @@ const Net = {
     this.started = true;
     this.ghosts.clear();
     this.remote.clear();
+    this.taken.clear();
     Game.startRun(this.charId);
     this.hostFloor = Game.floor;
     if (!this.isHost) {
@@ -374,6 +377,11 @@ const Net = {
         g._inp = { mx: 0, my: 0, a: 0, f: 0, d: 0, q: 0, x: g.x, y: g.y };
         this.ghosts.set(from, g);
       }
+      return;
+    }
+    if (d.t === 'take') {
+      const pk = world.pickups.find(x => x.nid === d.i);
+      if (pk) pk.dead = true;
       return;
     }
     if (d.t === 'input') {
@@ -462,6 +470,8 @@ const Net = {
     }
     // 敌人
     this.applyEnemies(s.e);
+    // 掉落物
+    this.applyPickups(s.k);
   },
 
   applyEnemies(list) {
@@ -488,6 +498,44 @@ const Net = {
     for (const e of world.enemies) {
       if (e.nid && !seen.has(e.nid) && !e.dead) e.dead = true;
     }
+  },
+
+  /* 成员端：按房主快照维护掉落物 */
+  applyPickups(list) {
+    if (!Array.isArray(list)) return;
+    const seen = new Set();
+    for (const d of list) {
+      seen.add(d.i);
+      if (this.taken.has(d.i)) continue;
+      let pk = world.pickups.find(x => x.nid === d.i);
+      if (!pk) {
+        let weapon = null;
+        if (d.w && typeof WEAPON_BY_ID !== 'undefined' && WEAPON_BY_ID[d.w]) {
+          weapon = makeWeaponInstance(WEAPON_BY_ID[d.w], Math.max(1, d.tr || 1), 0);
+        }
+        pk = new Pickup(d.t, d.x, d.y, {
+          value: d.v, heal: d.h, energy: d.e, weapon, vx: 0, vy: 0,
+        });
+        pk.nid = d.i;
+        pk.spawnT = 0;
+        world.pickups.push(pk);
+      }
+      pk._nx = d.x; pk._ny = d.y;
+    }
+    for (let i = world.pickups.length - 1; i >= 0; i--) {
+      const pk = world.pickups[i];
+      if (!pk.nid) continue;
+      if (!seen.has(pk.nid) && !this.taken.has(pk.nid)) pk.dead = true;
+    }
+  },
+
+  /* 本地拾取：成员要告诉房主，否则快照会把东西刷回来 */
+  onLocalPickup(pk) {
+    if (!this.on || !this.started) return;
+    if (this.isHost) return;
+    if (!pk || !pk.nid) return;
+    this.taken.add(pk.nid);
+    this.sendRelay({ t: 'take', i: pk.nid });
   },
 
   /* ---------------- 每帧 ---------------- */
@@ -517,6 +565,12 @@ const Net = {
         if (e._nx == null || e.dead) continue;
         e.x += (e._nx - e.x) * 0.35;
         e.y += (e._ny - e.y) * 0.35;
+      }
+      // 掉落物位置校正（不做强插值，避免金币被磁吸时抽搐）
+      for (const pk of world.pickups) {
+        if (pk._nx == null || pk.dead) continue;
+        pk.x += (pk._nx - pk.x) * 0.2;
+        pk.y += (pk._ny - pk.y) * 0.2;
       }
       // 队友插值
       for (const r of this.remote.values()) {
@@ -604,13 +658,25 @@ const Net = {
         a: +(e.alpha == null ? 1 : e.alpha).toFixed(2),
       });
     }
+    // 掉落物：队友也要能看见房主打出来的金币和武器
+    const drops = [];
+    for (const pk of world.pickups) {
+      if (!pk || pk.dead || !pk.nid) continue;
+      if (pk.price > 0) continue;            // 商店商品各端自理
+      if (drops.length >= 40) break;
+      drops.push({
+        i: pk.nid, t: pk.type, x: Math.round(pk.x), y: Math.round(pk.y),
+        v: pk.value, h: pk.heal, e: pk.energy,
+        w: pk.weapon ? pk.weapon.baseId : '', tr: pk.weapon ? pk.weapon.tier : 0,
+      });
+    }
     this.sendRelay({
       t: 'state', f: Game.floor,
       r: world.room ? [world.room.gx, world.room.gy] : null,
       cl: world.room && world.room.cleared ? 1 : 0,
       sp: world.room && world.room.spawned ? 1 : 0,
       po: world.portal ? 1 : 0,
-      p: players, e: enemies,
+      p: players, e: enemies, k: drops,
     });
     this.states++;
   },

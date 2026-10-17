@@ -255,6 +255,26 @@ async function waitPort() {
     await sleep(700);
     ok(await B.waitFor('!!world.portal', 5000), '传送门同步到成员端');
 
+    /* ---------- 掉落物同步 ---------- */
+    await A.eval('(()=>{ world.pickups.length = 0; world.pickups.push(new Pickup("coin", 500, 300, { value: 7, vx: 0, vy: 0 })); world.pickups.push(new Pickup("health", 560, 320, { heal: 25, vx: 0, vy: 0 })); return true; })()');
+    await sleep(700);
+    const bDrops = await B.eval('world.pickups.filter(p => !p.dead).length');
+    ok(bDrops >= 2, '房主掉落物同步到成员端 (' + bDrops + ' 个)');
+    const bKinds = await B.eval('world.pickups.filter(p => !p.dead).map(p => p.type).sort().join(",")');
+    ok(String(bKinds).includes('coin') && String(bKinds).includes('health'), '掉落类型一致：' + bKinds);
+
+    const hostBefore = await A.eval('world.pickups.filter(p => !p.dead).length');
+    const took = await B.eval(`(()=>{
+      const pk = world.pickups.find(p => p.type === 'coin' && !p.dead);
+      if (!pk) return false;
+      pk.x = world.player.x; pk.y = world.player.y;
+      pk.collect(world.player);
+      return true;
+    })()`);
+    await sleep(700);
+    const hostAfter = await A.eval('world.pickups.filter(p => !p.dead).length');
+    ok(took === true && hostAfter < hostBefore, `成员拾取后房主端移除该掉落 (${hostBefore} -> ${hostAfter})`);
+
     /* ---------- 掉线处理 ---------- */
     await B.eval('Net.close(); true');
     await sleep(600);

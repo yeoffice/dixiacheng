@@ -435,6 +435,7 @@ class Turret {
 class Pickup {
   constructor(type, x, y, opts = {}) {
     this.type = type; this.x = x; this.y = y;
+    this.nid = (Pickup._seq = (Pickup._seq || 0) + 1);   // 联机掉落同步用
     this.vx = opts.vx !== undefined ? opts.vx : rand(70, -70);
     this.vy = opts.vy !== undefined ? opts.vy : rand(70, -70);
     this.life = 60;
@@ -475,6 +476,8 @@ class Pickup {
   collect(p) {
     if (this.dead) return;
     this.dead = true;
+    // 联机：本地拾取后通知房主，避免快照把已经捡走的东西又刷回来
+    if (typeof Net !== 'undefined' && Net.on) Net.onLocalPickup(this);
     switch (this.type) {
       case 'coin':
         Game.addCoins(this.value);
