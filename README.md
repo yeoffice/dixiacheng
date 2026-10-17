@@ -11,7 +11,13 @@
 
 ## 快速开始
 
-**方式一（推荐）**：双击 `index.html`，或双击 `启动游戏.bat`。
+| 你想做什么 | 双击这个 |
+| --- | --- |
+| 一个人玩 | `index.html`（或 `启动游戏.bat`） |
+| 和朋友在同一个 WiFi 联机 | `一键联机.bat` |
+| 和朋友跨网络联机 | `公网联机.bat` |
+
+联机的完整步骤见 [QUICKSTART.md](QUICKSTART.md)，不需要注册账号、不需要买服务器。
 
 **方式二**：把整个文件夹拖进浏览器窗口（Chrome / Edge / Firefox 现代版本均可）。
 
@@ -145,7 +151,10 @@ PORT=9000 node server/index.mjs    # 改端口（Windows: $env:PORT=9000; node s
 ```
 dungeon-knight/
 ├─ index.html            入口
-├─ 启动游戏.bat           双击启动
+├─ 启动游戏.bat           双击启动（单机）
+├─ 一键联机.bat           双击联机（同一 WiFi）
+├─ 公网联机.bat           双击联机（跨网络，自动下载隧道工具）
+├─ QUICKSTART.md         三步开玩（联机最简路径）
 ├─ manifest.json         PWA 清单（添加到主屏幕 / 全屏启动）
 ├─ icon.svg / icon-*.png 程序化生成的图标
 ├─ README.md

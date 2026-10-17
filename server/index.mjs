@@ -6,6 +6,7 @@
    ===================================================================== */
 import http from 'node:http';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -301,10 +302,35 @@ setInterval(() => {
   }
 }, 20000).unref();
 
+function lanAddresses() {
+  const out = [];
+  const nets = os.networkInterfaces();
+  for (const list of Object.values(nets)) {
+    for (const ni of list || []) {
+      if (ni.family === 'IPv4' && !ni.internal) out.push(ni.address);
+    }
+  }
+  return out;
+}
+
 server.listen(PORT, () => {
-  console.log('地牢骑士联机服务已启动');
-  console.log('  本机游戏 : http://localhost:' + PORT + '/');
-  console.log('  局域网   : http://<本机IP>:' + PORT + '/');
-  console.log('  WebSocket: ws://localhost:' + PORT + '/');
-  console.log('  房间上限 : ' + MAX_PLAYERS + ' 人/房');
+  console.log('');
+  console.log('  地牢骑士联机服务已启动');
+  console.log('');
+  console.log('    本机游戏 : http://localhost:' + PORT + '/');
+  const ips = lanAddresses();
+  for (const ip of ips) {
+    console.log('    局域网   : http://' + ip + ':' + PORT + '/   <- 同一 WiFi 的朋友打开这个');
+  }
+  if (ips.length > 1) {
+    console.log('               (检测到多个网卡，选朋友能访问的那个；虚拟网卡/VPN 的通常不是)');
+  }
+  if (ips.length === 0) {
+    console.log('    局域网   : 未检测到局域网地址，跨网络请用 公网联机.bat');
+  }
+  console.log('    WebSocket: ws://localhost:' + PORT + '/');
+  console.log('    房间上限 : ' + MAX_PLAYERS + ' 人/房');
+  console.log('');
+  console.log('  关闭这个窗口 = 停止服务器');
+  console.log('');
 });
