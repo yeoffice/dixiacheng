@@ -1,0 +1,107 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Visual Test - Dungeon Knight</title>
+<link rel="stylesheet" href="../css/style.css">
+<style>#app{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}canvas{display:block}</style>
+</head>
+<body>
+<div id="app"><canvas id="game" width="960" height="544"></canvas><div id="domui"></div></div>
+<script src="../js/util.js"></script>
+<script src="../js/art.js"></script>
+<script src="../js/weapons.js"></script>
+<script src="../js/enemies.js"></script>
+<script src="../js/bosses.js"></script>
+<script src="../js/entities.js"></script>
+<script src="../js/player.js"></script>
+<script src="../js/dungeon.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/game.js"></script>
+<script src="../js/main.js"></script>
+<script>
+function setupVisual(){
+  const mode = new URLSearchParams(location.search).get('mode') || 'combat';
+  const charId = mode === 'boss' ? 'knight' : (mode === 'shop' ? 'alchemist' : 'gunner');
+  Game.startRun(charId);
+  const p = world.player;
+  p.hurt = function(){};
+  p.invuln = 0;
+  Game.coins = 137;
+  Save.data.gems = 486;
+  p.hp = Math.round(p.maxHp * .82);
+  p.armor = Math.round(p.maxArmor * .74);
+  p.energy = Math.round(p.maxEnergy * .9);
+
+  if (mode === 'combat') {
+    Game.floor = 2;
+    const fd = generateFloor(2);
+    world.room = null;
+    const battle = fd.rooms.find(r => r.type === 'battle') || fd.start;
+    enterRoom(battle, 's');
+    p.x = VW * .38; p.y = VH * .55;
+    p.giveWeapon(makeWeaponInstance(WEAPON_BY_ID.smg, 4, 1), 0);
+    p.giveWeapon(makeWeaponInstance(WEAPON_BY_ID.fireStaff, 4, 1), 1);
+    p.skillCd = 2.4;
+    world.enemies.length = 0;
+    const spawn = [
+      ['skeleton', .16, .28], ['skelArcher', .8, .24], ['tombGuard', .74, .68],
+      ['greenSlime', .25, .8], ['bat', .58, .15], ['dungeonMage', .9, .5], ['skelKnight', .5, .72],
+    ];
+    for (const [id, fx, fy] of spawn) {
+      const e = new Enemy(ENEMY_BY_ID[id], VW * fx, VH * fy, 3, id === 'tombGuard');
+      e.spawnT = 0; e.maxHp *= 6; e.hp = e.maxHp;
+      world.enemies.push(e);
+    }
+    for (let i = 0; i < 6; i++) world.pickups.push(new Pickup('coin', p.x + rand(120, -120), p.y + rand(80, -80), { value: 1 }));
+    Game.addCoins(0);
+  } else if (mode === 'boss') {
+    Game.floor = 3;
+    const fd = generateFloor(3);
+    world.room = null;
+    enterRoom(fd.boss, 's');
+    p.x = VW / 2; p.y = VH * .78;
+    p.giveWeapon(makeWeaponInstance(WEAPON_BY_ID.apocalypse, 5, 1), 0);
+    p.giveWeapon(makeWeaponInstance(WEAPON_BY_ID.railgun, 5, 1), 1);
+    const boss = world.enemies.find(e => e.isBoss);
+    if (boss) { boss.hp = boss.maxHp * .58; boss.phase = 2; boss.announce = '寒霜环'; boss.announceT = 1.2; }
+    p.skillCd = 0;
+  } else if (mode === 'shop') {
+    Game.floor = 4;
+    const fd = generateFloor(4);
+    world.room = null;
+    const shop = fd.rooms.find(r => r.type === 'shop');
+    enterRoom(shop, 's');
+    p.x = VW / 2 - 160; p.y = VH / 2 + 80;
+    Game.coins = 137;
+    p.giveWeapon(makeWeaponInstance(WEAPON_BY_ID.fireStaff, 4, 0), 0);
+    p.skillCd = 3;
+    // 让商品名清晰可见
+    for (const pk of world.pickups) pk.spawnT = 0;
+  }
+
+  // 简单自动驾驶：瞄准最近的敌人并持续开火
+  setInterval(function(){
+    if (!world.player || world.player.dead) return;
+    if (mode === 'shop') { Input.mouse.down = false; return; }
+    const t = nearestEnemy(p.x, p.y, 1400);
+    if (t) {
+      Input.mouse.down = true;
+      Input.mouse.x = t.x; Input.mouse.y = t.y;
+    }
+    const t2 = performance.now() / 900;
+    Input.keys['KeyA'] = Math.sin(t2) < -.55;
+    Input.keys['KeyD'] = Math.sin(t2) > .55;
+    Input.keys['KeyW'] = Math.cos(t2) < -.55;
+    Input.keys['KeyS'] = Math.cos(t2) > .55;
+  }, 40);
+  UI.toasts.length = 0;
+  window.__READY__ = true;
+}
+addEventListener('load', function(){ setTimeout(setupVisual, 30); });
+</script>
+</body>
+</html>
+
+
+

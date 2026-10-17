@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Art Sheets</title>
+<style>
+  body{margin:0;background:#121019;color:#ddd;font:12px "Microsoft YaHei",system-ui;overflow-x:hidden}
+  canvas{display:block;image-rendering:pixelated}
+</style>
+</head>
+<body>
+<canvas id="sheet" width="1280" height="900"></canvas>
+<script src="../js/util.js"></script>
+<script src="../js/art.js"></script>
+<script src="../js/weapons.js"></script>
+<script src="../js/enemies.js"></script>
+<script src="../js/bosses.js"></script>
+<script src="../js/player.js"></script>
+<script>
+(function(){
+  const part = new URLSearchParams(location.search).get('part') || 'enemies';
+  const g = document.getElementById('sheet').getContext('2d');
+  g.imageSmoothingEnabled = false;
+  g.fillStyle = '#121019'; g.fillRect(0,0,1280,900);
+  function title(txt, y){ g.font = '900 22px "Microsoft YaHei", system-ui'; g.fillStyle = '#ffd257'; g.fillText(txt, 20, y); }
+  function label(txt, x, y){ g.font = '11px "Microsoft YaHei", system-ui'; g.fillStyle = '#b9b0d0'; g.textAlign='center'; g.fillText(txt, x, y); g.textAlign='left'; }
+
+  if (part === 'enemies') {
+    title('敌人图鉴 ' + ENEMY_DEFS.length + ' 种', 34);
+    const cw = 124, ch = 116, cols = 10;
+    ENEMY_DEFS.forEach((e, i) => {
+      const x = 20 + (i % cols) * cw, y = 60 + Math.floor(i / cols) * ch;
+      g.fillStyle = (i % 2) ? '#1a1626' : '#171320';
+      g.fillRect(x, y, cw - 8, ch - 8);
+      const img = _spriteCache.get(enemySprite(e));
+      if (img) g.drawImage(img, x + (cw-8)/2 - 32, y + 8, 64, 64);
+      label(e.name, x + (cw-8)/2, y + 90);
+      label(e.ai + ' · ' + e.hp + 'HP', x + (cw-8)/2, y + 103);
+    });
+  } else if (part === 'bosses') {
+    title('首领 ' + BOSS_DEFS.length + ' 种', 34);
+    BOSS_DEFS.forEach((b, i) => {
+      const x = 20 + (i % 3) * 410, y = 60 + Math.floor(i / 3) * 400;
+      g.fillStyle = '#1a1626'; g.fillRect(x, y, 390, 380);
+      g.strokeStyle = '#3b3358'; g.strokeRect(x + .5, y + .5, 390, 380);
+      const img = _spriteCache.get(bossSprite(b));
+      if (img) g.drawImage(img, x + 390/2 - 120, y + 40, 240, 240);
+      g.font = '900 20px "Microsoft YaHei", system-ui'; g.fillStyle = '#ffd257'; g.textAlign='center';
+      g.fillText(b.name + ' · ' + b.title, x + 195, y + 305);
+      g.font = '12px "Microsoft YaHei", system-ui'; g.fillStyle = '#b9b0d0';
+      g.fillText(b.hp + ' HP · ' + b.phases + ' 阶段 · ' + b.attacks.length + ' 种招式', x + 195, y + 330);
+      g.fillText(b.desc, x + 195, y + 355);
+      g.textAlign='left';
+    });
+  } else if (part === 'weapons') {
+    title('武器 ' + WEAPONS.length + ' 件', 34);
+    const cw = 128, ch = 80, cols = 10;
+    WEAPONS.forEach((w, i) => {
+      const x = 20 + (i % cols) * cw, y = 60 + Math.floor(i / cols) * ch;
+      g.fillStyle = (i % 2) ? '#1a1626' : '#171320';
+      g.fillRect(x, y, cw - 8, ch - 8);
+      const img = _spriteCache.get(weaponIconKey(w));
+      if (img) g.drawImage(img, x + 6, y + 12, 80, 48);
+      g.font = '11px "Microsoft YaHei", system-ui'; g.fillStyle = tierColor(w.tier);
+      g.textAlign='center'; g.fillText(w.name, x + (cw-8)/2, y + 72); g.textAlign='left';
+    });
+  } else if (part === 'chars') {
+    title('角色 & 道具', 34);
+    CHARACTERS.forEach((c, i) => {
+      const x = 30 + i * 150, y = 70;
+      g.fillStyle = '#1a1626'; g.fillRect(x - 10, y - 10, 134, 150);
+      const img = _spriteCache.get(playerSprite(c.id, 0));
+      if (img) g.drawImage(img, x + 20, y + 10, 96, 96);
+      g.font = '900 15px "Microsoft YaHei"'; g.fillStyle = c.color; g.textAlign='center';
+      g.fillText(c.name, x + 60, y + 126); g.textAlign='left';
+    });
+    const props = ['barrel','crate','torch','pillar','statue','bones','chest','portal','coin','gem','potionRed','potionBlue','energy','shieldOrb','chest','merchant','sign','altar','spike','web'];
+    title('道具', 280);
+    props.forEach((p, i) => {
+      const x = 30 + (i % 10) * 120, y = 310 + Math.floor(i / 10) * 120;
+      g.fillStyle = '#1a1626'; g.fillRect(x - 8, y - 8, 100, 100);
+      const img = _spriteCache.get(propSprite(p, 0));
+      if (img) g.drawImage(img, x + 8, y + 6, 72, 72);
+      label(p, x + 42, y + 94);
+    });
+  }
+  document.title = 'sheet-' + part;
+  window.__READY__ = true;
+})();
+</script>
+</body>
+</html>
