@@ -59,10 +59,10 @@ const Net = {
     try {
       if (typeof location === 'undefined' || location.protocol === 'file:') return 'ws://localhost:8080';
       const host = location.hostname || '';
-      const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(host) ||
-        /^192\.168\./.test(host) || /^10\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
-      // 只有页面本身就是服务器托管时才自动填；GitHub Pages 上没有 WS 服务，留空让用户填
-      if (isLocal) return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
+      // GitHub Pages 这类纯静态托管没有 WebSocket 服务，留空让玩家手填
+      if (/\.github\.io$/i.test(host) || /\.githubusercontent\.com$/i.test(host)) return '';
+      // 其余情况说明页面就是服务器托管的（Render / VPS / 局域网），直接同源
+      return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
     } catch (e) { /* ignore */ }
     return '';
   },

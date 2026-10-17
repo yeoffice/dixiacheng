@@ -74,7 +74,7 @@ PORT=9000 node server/index.mjs    # 改端口（Windows: $env:PORT=9000; node s
 
 ### 注意
 
-- GitHub Pages 是 https，浏览器只允许连 `wss://`，所以联机服务器必须自带 TLS（Render / Fly.io / Railway 等平台自动提供）。
+- 联机服务器必须走 https/wss（Render / Fly.io / Railway 等平台自动提供），浏览器会拦截 `ws://`。
 - 服务端不做鉴权与限流，是给朋友之间开黑用的；要公开运营得自己加房间密码和频率限制。
 
 ---
@@ -149,7 +149,7 @@ dungeon-knight/
 ├─ manifest.json         PWA 清单（添加到主屏幕 / 全屏启动）
 ├─ icon.svg / icon-*.png 程序化生成的图标
 ├─ README.md
-├─ DEPLOY.md             部署到 GitHub Pages 的说明
+├─ DEPLOY.md             部署说明（Render 单服务器模式，含完整操作步骤）
 ├─ screenshot.png
 ├─ css/
 │  └─ style.css          菜单 / 图鉴 / 祝福 / 结算等 DOM 界面样式

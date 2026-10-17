@@ -5,7 +5,8 @@ import path from 'node:path';
 
 const root = path.resolve(process.argv[2] || '.');
 const PORT = Number(process.env.NET_TEST_PORT || 8098);
-const CDP_PORT = 9335;
+const CDP_A = 9335;
+const CDP_B = 9336;
 const EDGE = process.env.EDGE || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const userDir = path.join(process.env.TEMP || '.', 'dsh-net-' + Date.now());
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -20,12 +21,17 @@ let srvLog = '';
 srv.stdout.on('data', d => { srvLog += d.toString(); });
 srv.stderr.on('data', d => { srvLog += d.toString(); });
 
-const edge = spawn(EDGE, [
-  '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--hide-scrollbars',
-  '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',
-  '--autoplay-policy=no-user-gesture-required',
-  `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${userDir}`, '--window-size=1280,800', 'about:blank',
-], { stdio: 'ignore' });
+/* 两个独立浏览器进程：后台标签页的 rAF 会被 Chrome 冻结，分进程才能真正并行跑 tick */
+function spawnEdge(port, tag) {
+  return spawn(EDGE, [
+    '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--hide-scrollbars',
+    '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',
+    '--autoplay-policy=no-user-gesture-required',
+    `--remote-debugging-port=${port}`, `--user-data-dir=${userDir}-${tag}`, '--window-size=1280,800', 'about:blank',
+  ], { stdio: 'ignore' });
+}
+const edgeA = spawnEdge(CDP_A, 'a');
+const edgeB = spawnEdge(CDP_B, 'b');
 
 class Cdp {
   constructor(url, label) {
@@ -81,12 +87,19 @@ class Cdp {
   }
 }
 
-async function waitPort() {
+async function waitPort(port) {
   for (let i = 0; i < 120; i++) {
-    try { const r = await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`); if (r.ok) return await r.json(); } catch (e) { /* retry */ }
+    try { const r = await fetch(`http://127.0.0.1:${port}/json/version`); if (r.ok) return await r.json(); } catch (e) { /* retry */ }
     await sleep(100);
   }
-  throw new Error('CDP port not ready');
+  throw new Error('CDP port not ready: ' + port);
+}
+
+async function firstPage(port) {
+  const list = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
+  const page = list.find(t => t.type === 'page');
+  if (!page) throw new Error('no page target on ' + port);
+  return page;
 }
 
 (async () => {
@@ -94,23 +107,21 @@ async function waitPort() {
   try {
     await sleep(600);
     ok(srvLog.includes('联机服务已启动'), '联机服务端已启动');
-    const ver = await waitPort();
-    console.log('      Edge ' + ver.Browser);
+    const verA = await waitPort(CDP_A);
+    const verB = await waitPort(CDP_B);
+    console.log('      Edge A ' + verA.Browser + ' / B ' + verB.Browser);
 
-    const list = await (await fetch(`http://127.0.0.1:${CDP_PORT}/json`)).json();
-    const first = list.find(t => t.type === 'page');
-    if (!first) throw new Error('no page target');
-    const second = await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/new?about:blank`, { method: 'PUT' })).json();
+    const pageA = await firstPage(CDP_A);
+    const pageB = await firstPage(CDP_B);
 
-    A = new Cdp(first.webSocketDebuggerUrl, 'A');
-    B = new Cdp(second.webSocketDebuggerUrl, 'B');
+    A = new Cdp(pageA.webSocketDebuggerUrl, 'A');
+    B = new Cdp(pageB.webSocketDebuggerUrl, 'B');
     await A.open(); await B.open();
     for (const c of [A, B]) { await c.send('Page.enable'); await c.send('Runtime.enable'); }
 
     const url = 'http://127.0.0.1:' + PORT + '/';
     await A.send('Page.navigate', { url });
     await B.send('Page.navigate', { url });
-    // 两个 tab 只有一个在前台，后台 tab 的 rAF 会被冻结；强制都保持 active + 焦点模拟
     for (const c of [A, B]) {
       try { await c.send('Page.setWebLifecycleState', { state: 'active' }); } catch (e) { /* ignore */ }
       try { await c.send('Emulation.setFocusEmulationEnabled', { enabled: true }); } catch (e) { /* ignore */ }
@@ -325,7 +336,8 @@ async function waitPort() {
   } finally {
     try { if (A) A.ws.close(); } catch (e) { /* ignore */ }
     try { if (B) B.ws.close(); } catch (e) { /* ignore */ }
-    try { edge.kill(); } catch (e) { /* ignore */ }
+    try { edgeA.kill(); } catch (e) { /* ignore */ }
+    try { edgeB.kill(); } catch (e) { /* ignore */ }
     try { srv.kill(); } catch (e) { /* ignore */ }
   }
 })();
