@@ -3,18 +3,30 @@ chcp 65001 >nul 2>nul
 title Dungeon Knight - Public Co-op
 setlocal
 
-rem pushd 能处理网络共享路径（UNC），cd /d 不行
 pushd "%~dp0" 2>nul
 if errorlevel 1 (
-  echo.
-  echo   [X] Cannot enter this folder.
-  echo       Copy the whole game folder to a local disk, e.g.  D:\dungeon
-  echo       Network shares like \\server\share do not work here.
-  echo.
+  echo   [X] Cannot enter this folder. Copy it to a local disk.
   pause
   exit /b 1
 )
 
+rem ---------- locate the real game root ----------
+if exist "server\index.mjs" goto :located
+set "GAMEDIR="
+for /d %%d in (*) do if exist "%%d\server\index.mjs" set "GAMEDIR=%%d"
+if defined GAMEDIR ( pushd "%GAMEDIR%" & goto :located )
+if exist "..\server\index.mjs" ( pushd .. & goto :located )
+if exist "..\..\server\index.mjs" ( pushd ..\.. & goto :located )
+
+echo.
+echo   [X] server\index.mjs not found, and no game folder nearby.
+echo       Move this .bat into the folder that contains index.html
+echo       ^(next to js\, css\, server\^) and run it again.
+echo.
+pause
+exit /b 1
+
+:located
 echo.
 echo  ============================================================
 echo    Dungeon Knight : Endless Echo   -   Public Co-op
@@ -25,9 +37,6 @@ echo.
 
 where node >nul 2>nul
 if errorlevel 1 goto :no_node
-
-if not exist "server\index.mjs" goto :no_server
-
 if not exist cloudflared.exe goto :need_tunnel
 goto :launch
 
@@ -36,16 +45,6 @@ echo   [X] Node.js is not installed.
 echo.
 echo       Install the LTS version from  https://nodejs.org
 echo       Then run this file again.
-echo.
-pause
-exit /b 1
-
-:no_server
-echo   [X] server\index.mjs not found in:
-echo       %CD%
-echo.
-echo       The folder is incomplete. Extract the whole package again,
-echo       keeping the structure:  index.html, js\, css\, server\
 echo.
 pause
 exit /b 1
@@ -62,12 +61,12 @@ if not exist cloudflared.exe (
   echo.
   echo   [X] Download failed.
   echo.
-  echo       Options:
-  echo         1^) Check the server can reach github.com
-  echo         2^) Download it on another machine and copy cloudflared.exe
-  echo            into this folder, then run this file again
-  echo         Download URL:
-  echo         https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe
+  echo       Download it on another machine and put cloudflared.exe
+  echo       into this folder:
+  echo       %CD%
+  echo.
+  echo       URL:
+  echo       https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe
   echo.
   pause
   exit /b 1
@@ -86,7 +85,7 @@ echo    Waiting for a public link like:
 echo      https://something-random.trycloudflare.com
 echo.
 echo    Send THAT link to your friends.
-echo    Keep this window open while playing. Press Ctrl+C to stop.
+echo    Keep this window open while playing. Ctrl+C to stop.
 echo   ------------------------------------------------------------
 echo.
 
@@ -95,7 +94,7 @@ set "CODE=%ERRORLEVEL%"
 
 echo.
 echo   Tunnel exited (code %CODE%).
-echo   If it closed instantly, run  诊断.bat  and send the output back.
+echo   If it closed instantly, run  诊断.bat  and send the log back.
 echo.
 pause
 popd

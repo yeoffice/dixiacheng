@@ -5,15 +5,28 @@ setlocal
 
 pushd "%~dp0" 2>nul
 if errorlevel 1 (
-  echo.
-  echo   [X] Cannot enter this folder.
-  echo       Copy the whole game folder to a local disk and run it there.
-  echo       Network shares like \\server\share do not work here.
-  echo.
+  echo   [X] Cannot enter this folder. Copy it to a local disk.
   pause
   exit /b 1
 )
 
+rem ---------- locate the real game root ----------
+if exist "server\index.mjs" goto :located
+set "GAMEDIR="
+for /d %%d in (*) do if exist "%%d\server\index.mjs" set "GAMEDIR=%%d"
+if defined GAMEDIR ( pushd "%GAMEDIR%" & goto :located )
+if exist "..\server\index.mjs" ( pushd .. & goto :located )
+if exist "..\..\server\index.mjs" ( pushd ..\.. & goto :located )
+
+echo.
+echo   [X] server\index.mjs not found, and no game folder nearby.
+echo       Move this .bat into the folder that contains index.html
+echo       ^(next to js\, css\, server\^) and run it again.
+echo.
+pause
+exit /b 1
+
+:located
 echo.
 echo  ============================================================
 echo    Dungeon Knight : Endless Echo   -   Co-op Server
@@ -24,7 +37,6 @@ echo.
 
 where node >nul 2>nul
 if errorlevel 1 goto :no_node
-if not exist "server\index.mjs" goto :no_server
 goto :launch
 
 :no_node
@@ -32,15 +44,6 @@ echo   [X] Node.js is not installed.
 echo.
 echo       Install the LTS version from  https://nodejs.org
 echo       Then run this file again.
-echo.
-pause
-exit /b 1
-
-:no_server
-echo   [X] server\index.mjs not found in:
-echo       %CD%
-echo.
-echo       The folder is incomplete. Extract the whole package again.
 echo.
 pause
 exit /b 1
@@ -60,11 +63,7 @@ echo           LAN : http://192.168.x.x:8080/
 echo      2. Send that address to them.
 echo      3. They open it and click  multiplayer  to join.
 echo.
-echo    Running this on a SERVER with a public IP?
-echo      Use  服务器启动.bat  instead - no tunnel needed.
-echo      Then allow TCP 8080 in the firewall and cloud security group.
-echo.
-echo    Keep the other window open while playing.
+echo    Server with a public IP? Use  服务器启动.bat  instead.
 echo   ------------------------------------------------------------
 echo.
 timeout /t 10 >nul 2>nul
