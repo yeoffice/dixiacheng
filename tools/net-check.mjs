@@ -139,6 +139,7 @@ async function waitPort() {
     ok(listed === 1, '成员大厅显示房间列表 (' + listed + ' 个)');
     const listText = await B.eval('(document.querySelector("#netRooms .net-room")||{}).textContent || ""');
     ok(String(listText).includes(code), '列表项显示房间码 ' + code);
+    await B.shot('net-lobby.png');
     await B.eval('(()=>{const b=document.querySelector("#netRooms [data-join]"); if(b) b.click(); return true;})()');
     ok(await B.waitFor('Net.on === true && !!Net.code', 8000), '点击列表中的房间直接加入');
     await B.eval('Net.charId = "ranger"; true');
