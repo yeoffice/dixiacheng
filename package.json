@@ -1,0 +1,18 @@
+{
+  "name": "dungeon-knight-echoes",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "地牢骑士：无尽回响 —— 纯前端零依赖肉鸽地牢射击游戏，含零依赖联机服务端",
+  "scripts": {
+    "start": "node server/index.mjs",
+    "serve": "node server/index.mjs",
+    "test": "node tools/smoke.mjs . && node tools/net-smoke.mjs .",
+    "test:browser": "node tools/cdp.mjs . && node tools/mobile-check.mjs . && node tools/net-check.mjs .",
+    "icons": "python tools/make-icons.py .",
+    "pack": "git archive --format=zip --prefix=dungeon-knight/ -o dungeon-knight.zip HEAD"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
