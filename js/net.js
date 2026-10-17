@@ -35,15 +35,36 @@ const Net = {
   listErr: '',
   listTimer: null,
   taken: new Set(),
+  timedOut: false,
+  _sentDown: false,
+  _downToast: 0,
 
   /* ---------------- 地址与工具 ---------------- */
-  defaultUrl() {
+  savedUrl() {
     try {
-      if (typeof location === 'undefined') return 'ws://localhost:8080';
-      if (location.protocol === 'https:') return 'wss://' + location.host;
-      if (location.protocol === 'http:') return 'ws://' + location.host;
+      if (typeof localStorage === 'undefined') return '';
+      return localStorage.getItem('dungeon_knight_net_url') || '';
+    } catch (e) { return ''; }
+  },
+
+  saveUrl(url) {
+    try {
+      if (typeof localStorage !== 'undefined' && url) localStorage.setItem('dungeon_knight_net_url', String(url));
     } catch (e) { /* ignore */ }
-    return 'ws://localhost:8080';
+  },
+
+  defaultUrl() {
+    const saved = this.savedUrl();
+    if (saved) return saved;
+    try {
+      if (typeof location === 'undefined' || location.protocol === 'file:') return 'ws://localhost:8080';
+      const host = location.hostname || '';
+      const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(host) ||
+        /^192\.168\./.test(host) || /^10\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+      // 只有页面本身就是服务器托管时才自动填；GitHub Pages 上没有 WS 服务，留空让用户填
+      if (isLocal) return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
+    } catch (e) { /* ignore */ }
+    return '';
   },
 
   send(obj) {
@@ -159,7 +180,7 @@ const Net = {
       <div class="sub">${inRoom ? '房间码 <b style="color:#ffd257;letter-spacing:4px;font-size:16px">' + this.code + '</b> · 你是' + me : '创建房间，或输入房间码加入'}</div>
       <div class="net-body">
         <label class="net-row"><span>昵称</span><input class="inp" id="netName" maxlength="12" value="${escapeHtml(this.name || '骑士' + (100 + Math.floor(Math.random() * 900)))}" ${inRoom ? 'disabled' : ''}></label>
-        <label class="net-row"><span>服务器</span><input class="inp" id="netUrl" value="${escapeHtml(url)}" ${inRoom ? 'disabled' : ''} placeholder="ws://localhost:8080"></label>
+        <label class="net-row"><span>服务器</span><input class="inp" id="netUrl" value="${escapeHtml(url)}" ${inRoom ? 'disabled' : ''} placeholder="wss://你的服务器域名"></label>
         ${inRoom ? '' : `<div class="net-row"><span>房间码</span><input class="inp" id="netCode" maxlength="4" placeholder="4 位" style="text-transform:uppercase"></div>`}
       </div>
       ${inRoom ? membersBlock : roomsBlock}
@@ -259,16 +280,20 @@ const Net = {
   },
 
   createRoom(url, name) {
+    if (!url) { this.renderLobby('<span class="bad">先填联机服务器地址，例如 wss://你的服务器域名</span>'); return; }
     this.name = (name || '骑士').slice(0, 12);
     this._url = url;
+    this.saveUrl(url);
     this.connect(url, () => this.send({ t: 'create', name: this.name }));
     this.renderLobby('正在连接…');
   },
 
   joinRoom(url, code, name) {
+    if (!url) { this.renderLobby('<span class="bad">先填联机服务器地址，例如 wss://你的服务器域名</span>'); return; }
     if (!code || code.length < 4) { this.renderLobby('<span class="bad">请输入 4 位房间码</span>'); return; }
     this.name = (name || '骑士').slice(0, 12);
     this._url = url;
+    this.saveUrl(url);
     this.connect(url, () => this.send({ t: 'join', code, name: this.name }));
     this.renderLobby('正在加入 ' + code + '…');
   },
@@ -357,6 +382,9 @@ const Net = {
     this.ghosts.clear();
     this.remote.clear();
     this.taken.clear();
+    this.timedOut = false;
+    this._sentDown = false;
+    this._downToast = 0;
     Game.startRun(this.charId);
     this.hostFloor = Game.floor;
     if (!this.isHost) {
@@ -384,6 +412,25 @@ const Net = {
       if (pk) pk.dead = true;
       return;
     }
+    if (d.t === 'coin') { Game.addCoins(d.v || 0); return; }
+    if (d.t === 'spend') { Game.coins = Math.max(0, Game.coins - (d.v || 0)); return; }
+    if (d.t === 'down') {
+      const g = this.ghosts.get(from);
+      if (g && !g.dead) { g.dead = true; g.downT = 20; g.hp = 0; }
+      return;
+    }
+    if (d.t === 'giveup') { this.ghosts.delete(from); return; }
+    if (d.t === 'revivehost') {
+      const p = world.player;
+      if (p && p.dead && (p.downT || 0) > 0) {
+        p.dead = false; p.hp = Math.round(p.maxHp * .5); p.invuln = 2;
+        p.downT = 0; p.deathT = 0;
+        this.sendRelay({ t: 'revive', i: this.id });
+        UI.toast('队友把你救了起来', '#7bff9b');
+        Sfx.play('heal');
+      }
+      return;
+    }
     if (d.t === 'input') {
       const g = this.ghosts.get(from);
       if (!g) return;
@@ -401,12 +448,41 @@ const Net = {
 
   /* ---------------- 成员：接收房主快照 ---------------- */
   onClientRelay(from, d) {
-    if (d.t !== 'state') return;
-    this.last = d;
-    this.applyState(d);
+    if (d.t === 'state') { this.last = d; this.applyState(d); return; }
+    if (d.t === 'buff') {
+      const b = (typeof BUFFS !== 'undefined') ? BUFFS.find(x => x.id === d.id) : null;
+      if (b && world.player) {
+        b.apply(world.player);
+        UI.toast('全队获得祝福：' + b.name, '#ffd257');
+        Sfx.play('levelup');
+      }
+      return;
+    }
+    if (d.t === 'over') { Game.finishRun(false); return; }
+    if (d.t === 'dead') {
+      if (d.i === this.id) { UI.toast('你已阵亡', '#ff5d6c'); Game.finishRun(false); }
+      return;
+    }
+    if (d.t === 'revive') {
+      if (d.i === this.id && world.player) {
+        const p = world.player;
+        p.dead = false; p.hp = Math.round(p.maxHp * .5); p.invuln = 2;
+        p.downT = 0; p.deathT = 0;
+        this.timedOut = false;
+        this._sentDown = false;
+        Sfx.play('heal');
+        UI.toast('队友把你救了起来', '#7bff9b');
+      } else {
+        const r = this.remote.get(d.i);
+        if (r) r.down = false;
+      }
+      return;
+    }
   },
 
   applyState(s) {
+    // 金币池全队共用，以房主账本为准
+    if (typeof s.cn === 'number' && s.cn !== Game.coins) Game.coins = s.cn;
     // 楼层跟随
     if (typeof s.f === 'number' && s.f !== Game.floor) {
       Game.floor = s.f;
@@ -462,6 +538,9 @@ const Net = {
         }
         r.tx = pp.x; r.ty = pp.y; r.a = pp.a || 0;
         r.hp = pp.h; r.mhp = pp.m || r.mhp;
+        r.down = !!pp.d;
+        r.p.dead = !!pp.d;
+        r.p.downT = pp.dn || 0;
         r.p.moving = true;
       }
       for (const id of [...this.remote.keys()]) {
@@ -538,6 +617,66 @@ const Net = {
     this.sendRelay({ t: 'take', i: pk.nid });
   },
 
+  /* 金币共享：房主记账，成员上报 */
+  onCoinPickup(v) {
+    if (!this.on || !this.started) return;
+    if (this.isHost) { Game.addCoins(v || 0); return; }
+    this.sendRelay({ t: 'coin', v: v || 0 });
+  },
+
+  /* 倒地救援：靠近倒地队友按 E */
+  tryRevive() {
+    if (!this.on || !this.started) return false;
+    const p = world.player;
+    if (!p || p.dead) return false;
+    if (this.isHost) {
+      for (const [id, g] of this.ghosts) {
+        if (!g || !g.dead) continue;
+        if (dist2(p.x, p.y, g.x, g.y) > 80 * 80) continue;
+        g.dead = false;
+        g.hp = Math.round(g.maxHp * .5);
+        g.invuln = 2;
+        g.downT = 0;
+        g.deathT = 0;
+        this.sendRelay({ t: 'revive', i: id });
+        UI.toast('救起了队友', '#7bff9b');
+        Sfx.play('heal');
+        return true;
+      }
+      return false;
+    }
+    for (const r of this.remote.values()) {
+      if (!r || !r.down) continue;
+      if (dist2(p.x, p.y, r.p.x, r.p.y) > 80 * 80) continue;
+      this.sendRelay({ t: 'revivehost' });
+      return true;
+    }
+    return false;
+  },
+
+  /* 倒地读秒结束 */
+  onPlayerTimedOut() {
+    if (this.timedOut) return;
+    this.timedOut = true;
+    if (this.isHost) this.sendRelay({ t: 'over' });
+    else this.sendRelay({ t: 'giveup' });
+    Game.finishRun(false);
+  },
+
+  /* 倒地倒计时 HUD（画在显示分辨率层） */
+  drawHud(g) {
+    if (!this.on || !this.started) return;
+    const p = world.player;
+    if (!p || !p.dead) return;
+    const left = Math.ceil(p.downT == null ? 20 : p.downT);
+    drawText(g, '倒地 ' + left + 's', VW / 2, VH / 2 - 64, {
+      size: 26, color: '#ff5d6c', align: 'center', weight: 900, stroke: '#2a0008', strokeW: 5,
+    });
+    drawText(g, '队友靠近按 E 救援', VW / 2, VH / 2 - 38, {
+      size: 12, color: '#ffb0b8', align: 'center', weight: 700,
+    });
+  },
+
   /* ---------------- 每帧 ---------------- */
   tick(dt) {
     if (!this.on || !this.started) return;
@@ -545,6 +684,9 @@ const Net = {
     const p = world.player;
 
     if (!this.isHost && p) {
+      // 倒地通知（只发一次）
+      if (p.dead && !this._sentDown) { this._sentDown = true; this.sendRelay({ t: 'down' }); }
+      if (!p.dead && this._sentDown) { this._sentDown = false; this.timedOut = false; }
       this.sendT += dt;
       if (this.sendT >= 0.05) {
         this.sendT = 0;
@@ -585,6 +727,15 @@ const Net = {
 
     if (this.isHost) {
       this.stepGhosts(dt);
+      // 成员倒地读秒：超时移除代理并通知本人阵亡
+      for (const [id, g] of [...this.ghosts]) {
+        if (!g || !g.dead) continue;
+        g.downT = Math.max(0, (g.downT == null ? 20 : g.downT) - dt);
+        if (g.downT <= 0) {
+          this.ghosts.delete(id);
+          this.sendRelay({ t: 'dead', i: id });
+        }
+      }
       this.stateT += dt;
       if (this.stateT >= 0.05) { this.stateT = 0; this.broadcastState(); }
     }
@@ -639,6 +790,7 @@ const Net = {
         i: this.id, c: p.charId, x: Math.round(p.x), y: Math.round(p.y),
         a: +(+p.aimAngle).toFixed(2), h: Math.round(p.hp), m: Math.round(p.maxHp),
         r: Math.round(p.armor), d: p.dead ? 1 : 0,
+        dn: p.dead ? Math.ceil(p.downT || 0) : 0,
       });
     }
     for (const [id, g] of this.ghosts) {
@@ -647,6 +799,7 @@ const Net = {
         i: id, c: g.charId, x: Math.round(g.x), y: Math.round(g.y),
         a: +(+g.aimAngle).toFixed(2), h: Math.round(g.hp), m: Math.round(g.maxHp),
         r: Math.round(g.armor), d: g.dead ? 1 : 0,
+        dn: g.dead ? Math.ceil(g.downT || 0) : 0,
       });
     }
     const enemies = [];
@@ -676,6 +829,7 @@ const Net = {
       cl: world.room && world.room.cleared ? 1 : 0,
       sp: world.room && world.room.spawned ? 1 : 0,
       po: world.portal ? 1 : 0,
+      cn: Game.coins,
       p: players, e: enemies, k: drops,
     });
     this.states++;
@@ -725,6 +879,16 @@ const Net = {
   drawPeer(g, p, name, hp, maxHp) {
     if (!p) return;
     p.draw(g);
+    if (p.dead) {
+      // 倒地队友：显示救援倒计时
+      g.save();
+      g.font = '700 9px "Microsoft YaHei", sans-serif';
+      g.textAlign = 'center';
+      g.fillStyle = '#ff8a8a';
+      g.fillText('倒地 ' + Math.ceil(p.downT == null ? 20 : p.downT) + 's', p.x, p.y - 22);
+      g.restore();
+      return;
+    }
     // 名字 + 血条
     const label = name || '队友';
     g.save();

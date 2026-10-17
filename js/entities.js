@@ -480,7 +480,9 @@ class Pickup {
     if (typeof Net !== 'undefined' && Net.on) Net.onLocalPickup(this);
     switch (this.type) {
       case 'coin':
-        Game.addCoins(this.value);
+        // 联机：金币进全队公共池，由房主统一记账
+        if (typeof Net !== 'undefined' && Net.on && Net.started) Net.onCoinPickup(this.value);
+        else Game.addCoins(this.value);
         Sfx.play('coin');
         FX.text(this.x, this.y - 14, '+' + this.value, '#ffd257', 12);
         break;

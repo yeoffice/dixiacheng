@@ -182,7 +182,11 @@ const Game = {
     tryRoomTransition();
     // 交互扫描
     this.scanInteract();
-    if (Input.wasPressed('KeyE')) this.interact();
+    if (Input.wasPressed('KeyE')) {
+      // 联机：救援倒地队友优先于普通交互
+      const rescued = (typeof Net !== 'undefined' && Net.on && Net.tryRevive) ? Net.tryRevive() : false;
+      if (!rescued) this.interact();
+    }
 
     // 房间清空
     this.checkRoomClear();
@@ -193,7 +197,14 @@ const Game = {
     // 死亡流程
     if (p && p.dead) {
       this.deathT += dt;
-      if (this.deathT > 1.6) this.finishRun(false);
+      const netGame = typeof Net !== 'undefined' && Net.on && Net.started;
+      if (netGame) {
+        // 联机：倒地等待队友救援，倒计时结束才真死
+        p.downT = Math.max(0, (p.downT == null ? 20 : p.downT) - dt);
+        if (p.downT <= 0) Net.onPlayerTimedOut();
+      } else if (this.deathT > 1.6) {
+        this.finishRun(false);
+      }
     }
     Input.endFrame();
   },
@@ -267,6 +278,7 @@ const Game = {
 
     if (this.state === 'playing' || this.state === 'paused' || this.state === 'blessing') {
       UI.drawHUD(view);
+      if (typeof Net !== 'undefined' && Net.on) Net.drawHud(view);
     }
     if (world.player && world.player.dead) {
       view.save();
@@ -518,6 +530,8 @@ const Game = {
       if (pk.price > 0) {
         if (this.coins < pk.price) { UI.toast('金币不足（需要 ' + pk.price + '）', '#ff8a8a'); Sfx.play('error'); return; }
         this.coins -= pk.price;
+        // 联机：扣款同步到房主，金币池全队共用
+        if (typeof Net !== 'undefined' && Net.on && Net.started && !Net.isHost) Net.sendRelay({ t: 'spend', v: pk.price });
         if (pk.type === 'shopWeapon') {
           this.pickupWeapon(pk.weapon, pk.price);
           if (pk.offer) pk.offer.bought = true;
@@ -606,6 +620,8 @@ const Game = {
     }
     UI.showBlessings(choices, (buff) => {
       buff.apply(world.player);
+      // 联机：祝福全队共享
+      if (typeof Net !== 'undefined' && Net.on && Net.started && Net.isHost) Net.sendRelay({ t: 'buff', id: buff.id });
       Sfx.play('levelup');
       UI.toast('获得祝福：' + buff.name, '#ffd257');
       this.state = 'playing';
@@ -656,6 +672,8 @@ const Game = {
   finishRun(victory) {
     if (this.state === 'gameover') return;
     this.state = 'gameover';
+    // 联机：全队同时结算
+    if (typeof Net !== 'undefined' && Net.on && Net.started && Net.isHost) Net.sendRelay({ t: 'over' });
     const s = this.runStats;
     const gems = 8 + this.floor * 10 + Math.floor(s.kills / 4) + s.bossKills * 15;
     s.gems = gems;

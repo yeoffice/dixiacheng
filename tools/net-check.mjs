@@ -133,7 +133,7 @@ async function waitPort() {
     ok(api.rooms[0].players === 1 && api.rooms[0].started === false, '房间列表人数与状态正确');
 
     // 成员打开大厅 -> 看到列表 -> 点击加入
-    await B.eval('Net.openLobby(); true');
+    await B.eval('Net._url = "ws://127.0.0.1:' + PORT + '"; Net.openLobby(); true');
     await B.waitFor('document.querySelectorAll("#netRooms .net-room").length > 0', 8000);
     const listed = await B.eval('document.querySelectorAll("#netRooms .net-room").length');
     ok(listed === 1, '成员大厅显示房间列表 (' + listed + ' 个)');
@@ -274,6 +274,37 @@ async function waitPort() {
     await sleep(700);
     const hostAfter = await A.eval('world.pickups.filter(p => !p.dead).length');
     ok(took === true && hostAfter < hostBefore, `成员拾取后房主端移除该掉落 (${hostBefore} -> ${hostAfter})`);
+
+    /* ---------- 祝福共享 ---------- */
+    const dmgBefore = await B.eval('world.player.dmgMul');
+    await A.eval('Net.sendRelay({ t: "buff", id: "dmg1" }); true');
+    await sleep(500);
+    const dmgAfter = await B.eval('world.player.dmgMul');
+    ok(dmgAfter > dmgBefore, `房主选祝福同步到成员 (dmgMul ${dmgBefore.toFixed(3)} -> ${dmgAfter.toFixed(3)})`);
+
+    /* ---------- 金币共享 ---------- */
+    const coinA0 = await A.eval('Game.coins');
+    await B.eval('Net.onCoinPickup(10); true');
+    await sleep(500);
+    const coinA1 = await A.eval('Game.coins');
+    const coinB1 = await B.eval('Game.coins');
+    ok(coinA1 >= coinA0 + 10, `成员捡金币计入房主账本 (${coinA0} -> ${coinA1})`);
+    ok(coinB1 === coinA1, `金币池两端一致 (成员 ${coinB1} / 房主 ${coinA1})`);
+
+    /* ---------- 倒地救援 ---------- */
+    await B.eval('world.player.die(); true');
+    ok(await B.waitFor('world.player.dead === true', 3000), '成员进入倒地状态');
+    ok(await A.waitFor('(()=>{const g=[...Net.ghosts.values()][0]; return !!g && g.dead;})()', 6000), '房主端看到队友倒地');
+    const revived = await A.eval(`(()=>{
+      const g = [...Net.ghosts.values()][0];
+      if (!g) return false;
+      world.player.x = g.x; world.player.y = g.y;
+      return Net.tryRevive();
+    })()`);
+    ok(revived === true, '房主靠近倒地队友触发救援');
+    ok(await B.waitFor('world.player.dead === false && world.player.hp > 0', 6000), '被救成员复活并恢复生命');
+    const bHp = await B.eval('Math.round(world.player.hp)');
+    ok(bHp > 0, '复活后生命值 ' + bHp);
 
     /* ---------- 掉线处理 ---------- */
     await B.eval('Net.close(); true');

@@ -1,0 +1,12 @@
+# Render 蓝图：连上仓库后自动创建联机服务器
+# 用法：Render Dashboard -> New -> Blueprint -> 选这个仓库
+# 如果平台版本不认这个文件，用 New -> Web Service 手动创建，参数见 DEPLOY.md
+services:
+  - type: web
+    name: dungeon-knight
+    runtime: node
+    plan: free
+    buildCommand: ""
+    startCommand: node server/index.mjs
+    healthCheckPath: /health
+    autoDeploy: true

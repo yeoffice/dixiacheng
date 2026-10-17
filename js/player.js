@@ -354,6 +354,7 @@ class Player {
     if (this.dead) return;
     this.dead = true;
     this.deathT = 0;
+    this.downT = 20;   // 联机倒地救援倒计时（单机不读这个值）
     Sfx.play('death');
     Camera.addShake(16);
     Camera.flashScreen('#ff5d6c', .5);
