@@ -31,6 +31,9 @@ const Net = {
   states: 0,
   _savedInput: null,
   lobbyTick: 0,
+  roomList: [],
+  listErr: '',
+  listTimer: null,
 
   /* ---------------- 地址与工具 ---------------- */
   defaultUrl() {
@@ -54,6 +57,86 @@ const Net = {
     Game.state = 'lobby';
     Input.resetSticks();
     this.renderLobby();
+    this.startListPolling();
+  },
+
+  currentUrl() {
+    const el = this.root() && this.root().querySelector('#netUrl');
+    const v = el ? String(el.value || '').trim() : '';
+    return v || this._url || this.defaultUrl();
+  },
+
+  /* ---------------- 房间列表 ---------------- */
+  roomsHttpBase(url) {
+    return String(url || '').replace(/^ws/, 'http').replace(/\/+$/, '');
+  },
+
+  async refreshRooms(url) {
+    const base = this.roomsHttpBase(url || this.currentUrl());
+    try {
+      const r = await fetch(base + '/api/rooms', { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      this.roomList = Array.isArray(data.rooms) ? data.rooms : [];
+      this.listErr = '';
+    } catch (e) {
+      this.roomList = [];
+      this.listErr = '无法获取房间列表（服务器未启动或地址不对）';
+    }
+    return this.roomList;
+  },
+
+  roomListHtml() {
+    if (this.listErr) return '<div class="net-empty bad">' + escapeHtml(this.listErr) + '</div>';
+    if (!this.roomList.length) return '<div class="net-empty">暂无房间，创建一个吧</div>';
+    return this.roomList.map(r => `<div class="net-room">
+      <span class="rc">${escapeHtml(r.code)}</span>
+      <span class="rp">${r.players}/${r.max}</span>
+      <span class="rs ${r.started ? 'busy' : ''}">${r.started ? '游戏中' : '等待中'}</span>
+      <button class="btn small" data-join="${escapeHtml(r.code)}">加入</button>
+    </div>`).join('');
+  },
+
+  bindRoomList() {
+    const box = this.root() && this.root().querySelector('#netRooms');
+    if (!box) return;
+    box.querySelectorAll('[data-join]').forEach(btn => {
+      btn.onclick = () => {
+        const code = btn.dataset.join;
+        Sfx.play('select');
+        this.joinRoom(this.currentUrl(), code, this.currentName());
+      };
+    });
+  },
+
+  currentName() {
+    const el = this.root() && this.root().querySelector('#netName');
+    const v = el ? String(el.value || '').trim() : '';
+    return v || this.name || '骑士';
+  },
+
+  updateRoomListDom() {
+    const box = this.root() && this.root().querySelector('#netRooms');
+    if (!box) return;
+    box.innerHTML = this.roomListHtml();
+    this.bindRoomList();
+  },
+
+  startListPolling() {
+    this.stopListPolling();
+    const tick = async () => {
+      this.listTimer = null;
+      if (Game.state === 'lobby' && !this.code) {
+        await this.refreshRooms(this.currentUrl());
+        if (Game.state === 'lobby' && !this.code) this.updateRoomListDom();
+      }
+      if (Game.state === 'lobby' && !this.code) this.listTimer = setTimeout(tick, 4000);
+    };
+    this.listTimer = setTimeout(tick, 0);
+  },
+
+  stopListPolling() {
+    if (this.listTimer) { clearTimeout(this.listTimer); this.listTimer = null; }
   },
 
   renderLobby(statusText) {
@@ -64,6 +147,12 @@ const Net = {
       : '<div class="net-empty">还没有队友加入</div>';
     const inRoom = !!this.code;
     const me = this.isHost ? '房主' : '成员';
+    const roomsBlock = `<div class="net-rooms">
+      <div class="net-ptitle">公开房间 <span id="netRefresh" class="net-refresh">刷新</span></div>
+      <div id="netRooms">${this.roomListHtml()}</div>
+    </div>`;
+    const membersBlock = `<div class="net-players"><div class="net-ptitle">房间成员 (${peers.length + 1}/4)</div>
+      <div class="net-peer me"><span class="dot"></span>${escapeHtml(this.name || '我')}（你${this.isHost ? ' · 房主' : ''}）</div>${list}</div>`;
     UI.mount(`<div class="layer"><div class="panel net-panel">
       <h1 class="title" style="font-size:28px;letter-spacing:5px">联 机 大 厅</h1>
       <div class="sub">${inRoom ? '房间码 <b style="color:#ffd257;letter-spacing:4px;font-size:16px">' + this.code + '</b> · 你是' + me : '创建房间，或输入房间码加入'}</div>
@@ -72,7 +161,7 @@ const Net = {
         <label class="net-row"><span>服务器</span><input class="inp" id="netUrl" value="${escapeHtml(url)}" ${inRoom ? 'disabled' : ''} placeholder="ws://localhost:8080"></label>
         ${inRoom ? '' : `<div class="net-row"><span>房间码</span><input class="inp" id="netCode" maxlength="4" placeholder="4 位" style="text-transform:uppercase"></div>`}
       </div>
-      <div class="net-players"><div class="net-ptitle">房间成员 (${peers.length + (inRoom ? 1 : 0)}/4)</div>${inRoom ? '<div class="net-peer me"><span class="dot"></span>' + escapeHtml(this.name || '我') + '（你）</div>' : ''}${list}</div>
+      ${inRoom ? membersBlock : roomsBlock}
       ${statusText ? `<div class="net-status">${statusText}</div>` : ''}
       <div class="row" style="margin-top:18px">
         ${inRoom
@@ -98,6 +187,14 @@ const Net = {
     }
     const l = q('#netLeave');
     if (l) l.onclick = () => { Sfx.play('select'); this.leave(); };
+    const rf = q('#netRefresh');
+    if (rf) rf.onclick = async () => {
+      rf.textContent = '刷新中…';
+      await this.refreshRooms(val('#netUrl'));
+      this.updateRoomListDom();
+      rf.textContent = '刷新';
+    };
+    this.bindRoomList();
   },
 
   root() { return document.getElementById('domui'); },
@@ -182,6 +279,7 @@ const Net = {
   },
 
   close() {
+    this.stopListPolling();
     try { if (this.ws) this.ws.close(); } catch (e) { /* ignore */ }
     this.on = false;
     this.started = false;
@@ -200,6 +298,7 @@ const Net = {
         this.id = msg.id;
         this.code = msg.code;
         this.isHost = !!msg.host;
+        this.stopListPolling();
         this.peers.clear();
         for (const p of (msg.peers || [])) this.peers.set(p.id, p);
         this.renderLobby();
@@ -307,12 +406,38 @@ const Net = {
       world.room = null;
       if (typeof Sfx !== 'undefined' && Sfx.setTheme) Sfx.setTheme(world.floorData.theme);
     }
-    // 房间跟随
+    // 房间跟随：房主过门，成员一起过
     if (s.r && world.floorData) {
       const cur = world.room;
-      if (!cur || cur.gx !== s.r[0] || cur.gy !== s.r[1]) {
+      const changed = !cur || cur.gx !== s.r[0] || cur.gy !== s.r[1];
+      if (changed) {
         const target = world.floorData.rooms.find(r => r.gx === s.r[0] && r.gy === s.r[1]);
-        if (target) enterRoom(target, null);
+        if (target) {
+          enterRoom(target, null);
+          // 落点跟随房主，别把队友扔在房间正中央
+          const host = (s.p || []).find(x => x.i !== this.id);
+          const p = world.player;
+          if (host && p) {
+            p.x = clamp(host.x + 26, 40, VW - 40);
+            p.y = clamp(host.y + 16, 40, VH - 40);
+            p._px = p.x; p._py = p.y;
+            p.invuln = Math.max(p.invuln, .5);
+          }
+        }
+      }
+      // 房间状态同步：怪物已刷、门已开、传送门已出现
+      const room = world.room;
+      if (room) {
+        if (s.sp) room.spawned = true;
+        if (s.cl && !room.cleared) {
+          room.cleared = true;
+          setDoors(room, true);
+          Sfx.play('clear');
+        }
+        if (s.po && !world.portal) {
+          Game.spawnPortal(room);
+          UI.toast('传送门已开启', '#c8aaff');
+        }
       }
     }
     // 队友投影
@@ -482,9 +607,33 @@ const Net = {
     this.sendRelay({
       t: 'state', f: Game.floor,
       r: world.room ? [world.room.gx, world.room.gy] : null,
+      cl: world.room && world.room.cleared ? 1 : 0,
+      sp: world.room && world.room.spawned ? 1 : 0,
+      po: world.portal ? 1 : 0,
       p: players, e: enemies,
     });
     this.states++;
+  },
+
+  /* 进入房间时：房主把成员代理一起带到入口，避免队友卡在上一个房间 */
+  onEnterRoom(fromDir) {
+    if (!this.on || !this.started || !this.isHost) return;
+    const pos = this.entryPos(fromDir);
+    for (const g of this.ghosts.values()) {
+      if (!g) continue;
+      g.x = clamp(pos.x + rand(26, -26), 40, VW - 40);
+      g.y = clamp(pos.y + rand(20, -20), 40, VH - 40);
+      g._px = g.x; g._py = g.y;
+      if (g._inp) { g._inp.x = g.x; g._inp.y = g.y; }
+    }
+  },
+
+  entryPos(dir) {
+    if (dir === 'n') return { x: VW / 2, y: VH - 170 };
+    if (dir === 's') return { x: VW / 2, y: 170 };
+    if (dir === 'w') return { x: VW - 170, y: VH / 2 };
+    if (dir === 'e') return { x: 170, y: VH / 2 };
+    return { x: VW / 2, y: VH / 2 - 62 };
   },
 
   /* 成员端：是否要跳过本地刷怪（房主统一生成） */

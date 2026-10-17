@@ -525,11 +525,14 @@ function enterRoom(room, fromDir) {
   Camera.flashScreen('#000000', 0);
   Sfx.play('door');
   if (typeof Game !== 'undefined') Game.onEnterRoom(room);
+  if (typeof Net !== 'undefined' && Net.on) Net.onEnterRoom(fromDir);
 }
 
 function tryRoomTransition() {
   const p = world.player, room = world.room;
   if (!p || !room || p.dead) return;
+  // 联机成员不自主过门：房间推进由房主决定，成员跟随
+  if (typeof Net !== 'undefined' && Net.on && Net.started && !Net.isHost) return;
   if (!room.cleared) return;
   if (Math.abs(p.x - VW / 2) < 40 && p.y < 30 && room.next.n) {
     enterRoom(room.next.n, 's');

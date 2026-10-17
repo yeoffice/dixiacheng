@@ -164,7 +164,9 @@ const Game = {
     // 传送门
     if (world.portal) {
       world.portal.t += dt;
-      if (world.portal.t > 1.0 && p && !p.dead && dist(world.portal.x, world.portal.y, p.x, p.y) < 34) {
+      // 联机成员不自行推进楼层，跟着房主走
+      const netFollower = typeof Net !== 'undefined' && Net.on && Net.started && !Net.isHost;
+      if (!netFollower && world.portal.t > 1.0 && p && !p.dead && dist(world.portal.x, world.portal.y, p.x, p.y) < 34) {
         world.portal.standT = (world.portal.standT || 0) + dt;
         if (world.portal.standT > 1.5) {
           this.nextFloor();
@@ -343,6 +345,8 @@ const Game = {
 
   /* =============== 房间 / 掉落 =============== */
   checkRoomClear() {
+    // 联机成员端不自行结算房间清空：门与清空状态以房主快照为准
+    if (typeof Net !== 'undefined' && Net.on && Net.started && !Net.isHost) return;
     const room = world.room;
     if (!room || room.cleared || !room.spawned) return;
     if (world.enemies.length > 0) return;

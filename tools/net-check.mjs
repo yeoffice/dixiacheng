@@ -127,8 +127,20 @@ async function waitPort() {
     ok(/^[A-Z0-9]{4}$/.test(code), '房间码 ' + code);
     ok(await A.eval('Net.isHost === true'), '房主身份正确');
 
-    await B.eval('Net.openLobby(); Net.name = "玩家B"; Net.joinRoom("ws://127.0.0.1:' + PORT + '", "' + code + '", "玩家B"); true');
-    ok(await B.waitFor('Net.on === true && !!Net.code', 8000), '成员加入房间成功');
+    // 房间列表 API
+    const api = await (await fetch('http://127.0.0.1:' + PORT + '/api/rooms')).json();
+    ok(api.ok && api.rooms.length === 1 && api.rooms[0].code === code, '房间列表 API 返回刚创建的房间');
+    ok(api.rooms[0].players === 1 && api.rooms[0].started === false, '房间列表人数与状态正确');
+
+    // 成员打开大厅 -> 看到列表 -> 点击加入
+    await B.eval('Net.openLobby(); true');
+    await B.waitFor('document.querySelectorAll("#netRooms .net-room").length > 0', 8000);
+    const listed = await B.eval('document.querySelectorAll("#netRooms .net-room").length');
+    ok(listed === 1, '成员大厅显示房间列表 (' + listed + ' 个)');
+    const listText = await B.eval('(document.querySelector("#netRooms .net-room")||{}).textContent || ""');
+    ok(String(listText).includes(code), '列表项显示房间码 ' + code);
+    await B.eval('(()=>{const b=document.querySelector("#netRooms [data-join]"); if(b) b.click(); return true;})()');
+    ok(await B.waitFor('Net.on === true && !!Net.code', 8000), '点击列表中的房间直接加入');
     await B.eval('Net.charId = "ranger"; true');
     ok(await B.eval('Net.isHost === false'), '成员身份正确');
     ok(await A.waitFor('Net.peers.size === 1', 5000), '房主看到 1 名队友');
@@ -211,6 +223,36 @@ async function waitPort() {
     };
     console.log('      fireDbg:', JSON.stringify(fireDbg));
     ok(bullets1 > bullets0, `成员开火在房主端生成攻击 (${bullets0} -> ${bullets1})`);
+
+    /* ---------- 房主过门，成员一起过 ---------- */
+    const gate = await A.eval(`(()=>{
+      const r = world.room;
+      world.enemies.length = 0;
+      r.cleared = true; setDoors(r, true);
+      const dir = ['s','e','w','n'].find(d => r.next[d]);
+      const target = r.next[dir];
+      enterRoom(target, dir);
+      return { dir, room: [world.room.gx, world.room.gy] };
+    })()`);
+    await sleep(900);
+    const bRoom = await B.eval('world.room ? [world.room.gx, world.room.gy] : null');
+    ok(JSON.stringify(bRoom) === JSON.stringify(gate.room), '房主过门后成员进入同一房间 ' + JSON.stringify(gate.room));
+    const bNear = await B.eval(`(()=>{const p=world.player; const h=[...Net.remote.values()][0]; if(!p||!h) return -1; return Math.round(Math.hypot(p.x-h.p.x, p.y-h.p.y));})()`);
+    ok(bNear >= 0 && bNear < 180, '成员落点在房主附近 (距离 ' + bNear + 'px)');
+    const bDoor = await B.eval('world.room ? !!world.room.cleared : false');
+    ok(bDoor === true, '房间清空状态同步到成员端');
+
+    /* ---------- 成员不能自主过门 ---------- */
+    const bBefore = await B.eval('world.room ? [world.room.gx, world.room.gy] : null');
+    await B.eval('(()=>{const r=world.room; r.cleared=true; const p=world.player; p.x=VW/2; p.y=6; return true;})()');
+    await sleep(600);
+    const bAfter = await B.eval('world.room ? [world.room.gx, world.room.gy] : null');
+    ok(JSON.stringify(bBefore) === JSON.stringify(bAfter), '成员不能自主过门，房间保持不变');
+
+    /* ---------- 传送门同步 ---------- */
+    await A.eval('Game.spawnPortal(world.room); true');
+    await sleep(700);
+    ok(await B.waitFor('!!world.portal', 5000), '传送门同步到成员端');
 
     /* ---------- 掉线处理 ---------- */
     await B.eval('Net.close(); true');

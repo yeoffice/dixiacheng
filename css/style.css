@@ -131,6 +131,24 @@ h1.title small { display:block; font-size:15px; letter-spacing:10px; color:#a393
 .net-peer.me { color:#ffd257; }
 .net-peer .dot { width:6px; height:6px; border-radius:50%; background:#54e08a; box-shadow:0 0 6px rgba(84,224,138,.7); flex:none; }
 .net-empty { font-size:11px; color:#5c5578; }
+.net-empty.bad { color:#ff8a8a; }
+.net-rooms {
+  margin-top:14px; background:#0f0c1a; border:1px solid #2b2442; border-radius:8px;
+  padding:10px 12px; max-height:186px; overflow:auto;
+  touch-action:pan-y; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
+}
+.net-refresh { float:right; color:#8f74ff; cursor:pointer; font-size:10px; letter-spacing:1px; }
+.net-refresh:hover { color:#b9a2ff; }
+.net-room {
+  display:flex; align-items:center; gap:8px; padding:5px 0;
+  border-top:1px solid #1c1730; font-size:12px;
+}
+.net-room:first-child { border-top:none; }
+.net-room .rc { color:#ffd257; font-weight:800; letter-spacing:2px; width:50px; flex:none; }
+.net-room .rp { color:#8f88aa; width:34px; flex:none; }
+.net-room .rs { flex:1; color:#54e08a; font-size:11px; }
+.net-room .rs.busy { color:#ffa64d; }
+.net-room .btn.small { padding:5px 12px; font-size:11px; }
 .net-status { margin-top:10px; font-size:11px; color:#9b93b8; text-align:center; }
 .net-status .bad { color:#ff8a8a; }
 

@@ -100,6 +100,8 @@ node server/index.mjs            # 默认 8080
 | 自己的 VPS | `node server/index.mjs` + Nginx 反代 + certbot |
 | 局域网 | 直接跑，手机开 `http://<本机IP>:8080/` |
 
+大厅里的房间列表来自 `GET /api/rooms`（带 `Access-Control-Allow-Origin: *`），所以 Pages 页面也能跨域拉到服务器上的公开房间。房间列表 4 秒自动刷新。
+
 **必须是 https/wss**：Pages 页面是 https，浏览器会拦截 `ws://`。大厅里的服务器地址要填 `wss://你的域名/`。
 
 服务器自己也托管静态文件，所以你可以完全不用 Pages，把它当唯一入口。

@@ -241,8 +241,27 @@ function handle(conn, msg) {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || '/', 'http://localhost');
   if (url.pathname === '/health') {
-    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*' });
     return res.end(JSON.stringify({ ok: true, rooms: rooms.size, players: [...rooms.values()].reduce((n, r) => n + r.conns.size, 0) }));
+  }
+  // 房间列表：大厅用它显示谁在等人
+  if (url.pathname === '/api/rooms') {
+    const list = [...rooms.values()].map(r => {
+      const hostConn = r.conns.get(r.host);
+      return {
+        code: r.code,
+        players: r.conns.size,
+        max: MAX_PLAYERS,
+        started: !!r.started,
+        host: hostConn ? hostConn.name : '',
+      };
+    }).sort((a, b) => (a.started - b.started) || (b.players - a.players));
+    res.writeHead(200, {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+      'access-control-allow-origin': '*',
+    });
+    return res.end(JSON.stringify({ ok: true, rooms: list }));
   }
   let rel = decodeURIComponent(url.pathname);
   if (rel.endsWith('/')) rel += 'index.html';
