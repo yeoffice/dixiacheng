@@ -3,7 +3,7 @@ import vm from 'node:vm';
 import path from 'node:path';
 
 const root = path.resolve(process.argv[2] || '.');
-const files = ['util', 'art', 'weapons', 'enemies', 'bosses', 'entities', 'player', 'dungeon', 'ui', 'game', 'main'];
+const files = ['util', 'art', 'weapons', 'enemies', 'bosses', 'entities', 'player', 'dungeon', 'ui', 'game', 'net', 'main'];
 let src = '';
 for (const f of files) {
   const p = path.join(root, 'js', f + '.js');

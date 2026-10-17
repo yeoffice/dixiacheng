@@ -84,6 +84,28 @@ Settings → Pages → Source: GitHub Actions
 
 ---
 
+## 联机服务器（可选）
+
+Pages 只能托管静态文件，联机要一个能跑 Node 的进程：
+
+```bash
+node server/index.mjs            # 默认 8080
+```
+
+零依赖，不需要 `npm install`。同一个端口既提供游戏页面，也提供 WebSocket。
+
+| 平台 | 做法 |
+| --- | --- |
+| Render / Railway / Fly.io | 新建 Web Service，启动命令 `node server/index.mjs`，端口读 `PORT` |
+| 自己的 VPS | `node server/index.mjs` + Nginx 反代 + certbot |
+| 局域网 | 直接跑，手机开 `http://<本机IP>:8080/` |
+
+**必须是 https/wss**：Pages 页面是 https，浏览器会拦截 `ws://`。大厅里的服务器地址要填 `wss://你的域名/`。
+
+服务器自己也托管静态文件，所以你可以完全不用 Pages，把它当唯一入口。
+
+---
+
 ## 常见坑
 
 - **私有仓库**：Pages 需要 GitHub Pro / 付费计划；公开仓库免费。

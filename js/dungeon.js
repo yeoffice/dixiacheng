@@ -515,7 +515,8 @@ function enterRoom(room, fromDir) {
   // 门状态
   setDoors(room, room.cleared);
   if (!room.cleared && !room.spawned) {
-    spawnRoomEnemies(room);
+    // 联机成员端不本地刷怪：怪物由房主统一生成并广播，避免两套敌人
+    if (typeof Net === 'undefined' || !Net.skipLocalSpawn()) spawnRoomEnemies(room);
   } else if (room.type === 'boss' && room.cleared) {
     // Boss 已死，传送门
     if (typeof Game !== 'undefined') Game.spawnPortal(room);

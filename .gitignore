@@ -16,3 +16,6 @@ tools/*.png
 # release artifacts (build with: git archive --format=zip)
 *.zip
 *.zpi
+
+# local extracted copy of the release package (do not commit a second copy)
+/dungeon-knight/

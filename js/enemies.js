@@ -350,6 +350,7 @@ class Enemy {
   constructor(def, x, y, floor = 1, isElite = false) {
     this.def = def;
     this.defId = def.id;
+    this.nid = (Enemy._seq = (Enemy._seq || 0) + 1);   // 联机同步用的唯一编号
     this.name = def.name;
     this.x = x; this.y = y;
     this.floor = floor;

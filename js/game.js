@@ -185,6 +185,9 @@ const Game = {
     // 房间清空
     this.checkRoomClear();
 
+    // 联机同步（未联机时 Net.on 为 false，整段不执行）
+    if (typeof Net !== 'undefined' && Net.on) Net.tick(dt);
+
     // 死亡流程
     if (p && p.dead) {
       this.deathT += dt;
@@ -223,6 +226,8 @@ const Game = {
     for (const e of sorted) e.draw(ctx);
     // 玩家
     if (world.player) world.player.draw(ctx);
+    // 联机队友
+    if (typeof Net !== 'undefined' && Net.on) Net.draw(ctx);
     drawSlashes(ctx);
     drawBullets(ctx);
     drawEnemyBullets(ctx);

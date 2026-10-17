@@ -114,6 +114,7 @@ const UI = {
       <div class="char-grid">${cards}</div>
       <div class="row" style="margin-top:18px">
         <button class="btn primary" id="btnStart">开始冒险</button>
+        <button class="btn" id="btnNet">联 机</button>
         <button class="btn" id="btnCodex">图 鉴</button>
         <button class="btn ghost" id="btnHelp">玩 法</button>
         <button class="btn ghost" id="btnFs">${fsLabel}</button>
@@ -166,6 +167,8 @@ const UI = {
     start.onclick = () => { Sfx.resume(); Sfx.play('levelup'); Game.startRun(this.selectedChar); };
     this.root.querySelector('#btnCodex').onclick = () => { Sfx.play('select'); this.showCodex('weapons'); };
     this.root.querySelector('#btnHelp').onclick = () => { Sfx.play('select'); this.showHelp(); };
+    const netBtn = this.root.querySelector('#btnNet');
+    if (netBtn) netBtn.onclick = () => { Sfx.play('select'); if (typeof Net !== 'undefined') Net.openLobby(); };
     const fsBtn = this.root.querySelector('#btnFs');
     if (fsBtn) {
       if (typeof View !== 'undefined' && !View.supported()) fsBtn.style.opacity = '.6';

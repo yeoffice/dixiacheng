@@ -114,6 +114,26 @@ h1.title small { display:block; font-size:15px; letter-spacing:10px; color:#a393
 .hint { font-size:11px; color:#6f6888; text-align:center; margin-top:14px; letter-spacing:1px; line-height:1.7; }
 .kbd { display:inline-block; min-width:18px; padding:0 5px; border:1px solid #4a4168; border-bottom-width:2px; border-radius:4px; background:#221c33; color:#c9c1e6; font-size:10px; line-height:16px; }
 
+/* ---------- 联机大厅 ---------- */
+.net-panel { max-width:520px; }
+.net-body { display:flex; flex-direction:column; gap:8px; margin-top:14px; }
+.net-row { display:flex; align-items:center; gap:10px; font-size:12px; color:#9a92b4; }
+.net-row > span { width:48px; flex:none; letter-spacing:1px; }
+.inp {
+  flex:1; min-width:0; background:#0f0c1a; border:1px solid #3a3354; border-radius:6px;
+  color:#e9e6f5; font:inherit; font-size:13px; padding:9px 10px; outline:none;
+}
+.inp:focus { border-color:#8f74ff; box-shadow:0 0 0 2px rgba(143,116,255,.18); }
+.inp:disabled { opacity:.55; }
+.net-players { margin-top:14px; background:#0f0c1a; border:1px solid #2b2442; border-radius:8px; padding:10px 12px; }
+.net-ptitle { font-size:10px; color:#6f6888; letter-spacing:2px; margin-bottom:6px; }
+.net-peer { display:flex; align-items:center; gap:8px; font-size:12px; color:#c9c1e6; padding:3px 0; }
+.net-peer.me { color:#ffd257; }
+.net-peer .dot { width:6px; height:6px; border-radius:50%; background:#54e08a; box-shadow:0 0 6px rgba(84,224,138,.7); flex:none; }
+.net-empty { font-size:11px; color:#5c5578; }
+.net-status { margin-top:10px; font-size:11px; color:#9b93b8; text-align:center; }
+.net-status .bad { color:#ff8a8a; }
+
 .tabs { display:flex; gap:8px; justify-content:center; margin-top:14px; flex-wrap:wrap; }
 .tab { padding:6px 18px; font-size:12px; border:1px solid #3a3354; border-radius:20px; cursor:pointer; color:#9a92b4; letter-spacing:2px; }
 .tab.on { background:#372c58; border-color:#8f74ff; color:#fff; }
@@ -147,6 +167,7 @@ h1.title small { display:block; font-size:15px; letter-spacing:10px; color:#a393
   .btn { min-height:44px; padding:12px 20px; font-size:15px; }
   .btn.small { min-height:36px; }
   .tab { padding:9px 18px; font-size:13px; }
+  .inp { font-size:16px; padding:11px 12px; }
   .codex-item { padding:8px; }
   .codex-item .n { font-size:12px; }
   .codex-item .d { font-size:10px; }
