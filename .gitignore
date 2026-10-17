@@ -12,3 +12,7 @@ desktop.ini
 tools/out/
 tools/*.log
 tools/*.png
+
+# release artifacts (build with: git archive --format=zip)
+*.zip
+*.zpi
