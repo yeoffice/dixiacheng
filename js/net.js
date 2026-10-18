@@ -154,7 +154,11 @@ const Net = {
   updateRoomListDom() {
     const box = this.root() && this.root().querySelector('#netRooms');
     if (!box) return;
-    box.innerHTML = this.roomListHtml();
+    const html = this.roomListHtml();
+    // 内容没变就别重建：每秒重建一次会让点击落空、列表闪动
+    if (box._sig === html) return;
+    box._sig = html;
+    box.innerHTML = html;
     this.bindRoomList();
   },
 
@@ -254,6 +258,7 @@ const Net = {
         this.lastErr = '连接超时，检查服务器是否已启动';
         try { ws.close(); } catch (e) { /* ignore */ }
         this.renderLobby('<span class="bad">' + this.lastErr + '</span>');
+        this.startListPolling();
       }
     }, 4000);
 
@@ -290,11 +295,14 @@ const Net = {
       this.connecting = false;
       this.lastErr = '无法连接服务器：' + url;
       this.renderLobby('<span class="bad">' + this.lastErr + '</span>');
+      this.startListPolling();
     };
   },
 
   createRoom(url, name) {
     if (!url) { this.renderLobby('<span class="bad">先填联机服务器地址，例如 wss://你的服务器域名</span>'); return; }
+    // 点击瞬间就停轮询，避免列表刷新把正在点的按钮替换掉
+    this.stopListPolling();
     this.name = (name || '骑士').slice(0, 12);
     this._url = url;
     this.saveUrl(url);
@@ -305,6 +313,7 @@ const Net = {
   joinRoom(url, code, name) {
     if (!url) { this.renderLobby('<span class="bad">先填联机服务器地址，例如 wss://你的服务器域名</span>'); return; }
     if (!code || code.length < 4) { this.renderLobby('<span class="bad">请输入 4 位房间码</span>'); return; }
+    this.stopListPolling();
     this.name = (name || '骑士').slice(0, 12);
     this._url = url;
     this.saveUrl(url);
