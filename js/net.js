@@ -34,6 +34,7 @@ const Net = {
   roomList: [],
   listErr: '',
   listTimer: null,
+  listPollMs: 1500,
   taken: new Set(),
   timedOut: false,
   _sentDown: false,
@@ -95,15 +96,25 @@ const Net = {
 
   async refreshRooms(url) {
     const base = this.roomsHttpBase(url || this.currentUrl());
+    // 网络抖动时不能让请求无限挂起，否则轮询停摆、列表看起来"卡住"
+    const ac = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const timer = ac ? setTimeout(() => { try { ac.abort(); } catch (e) { /* ignore */ } }, 3000) : null;
     try {
-      const r = await fetch(base + '/api/rooms', { cache: 'no-store' });
+      const r = await fetch(base + '/api/rooms', {
+        cache: 'no-store',
+        signal: ac ? ac.signal : undefined,
+      });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const data = await r.json();
       this.roomList = Array.isArray(data.rooms) ? data.rooms : [];
       this.listErr = '';
     } catch (e) {
       this.roomList = [];
-      this.listErr = '无法获取房间列表（服务器未启动或地址不对）';
+      this.listErr = (e && e.name === 'AbortError')
+        ? '房间列表请求超时，正在重试…'
+        : '无法获取房间列表（服务器未启动或地址不对）';
+    } finally {
+      if (timer) clearTimeout(timer);
     }
     return this.roomList;
   },
@@ -124,7 +135,10 @@ const Net = {
     if (!box) return;
     box.querySelectorAll('[data-join]').forEach(btn => {
       btn.onclick = () => {
+        if (this.connecting) return;
         const code = btn.dataset.join;
+        btn.disabled = true;
+        btn.textContent = '连接中…';
         Sfx.play('select');
         this.joinRoom(this.currentUrl(), code, this.currentName());
       };
@@ -152,7 +166,7 @@ const Net = {
         await this.refreshRooms(this.currentUrl());
         if (Game.state === 'lobby' && !this.code) this.updateRoomListDom();
       }
-      if (Game.state === 'lobby' && !this.code) this.listTimer = setTimeout(tick, 4000);
+      if (Game.state === 'lobby' && !this.code) this.listTimer = setTimeout(tick, this.listPollMs);
     };
     this.listTimer = setTimeout(tick, 0);
   },
@@ -241,7 +255,7 @@ const Net = {
         try { ws.close(); } catch (e) { /* ignore */ }
         this.renderLobby('<span class="bad">' + this.lastErr + '</span>');
       }
-    }, 6000);
+    }, 4000);
 
     ws.onopen = () => {
       clearTimeout(timeout);
@@ -329,6 +343,7 @@ const Net = {
         this.peers.clear();
         for (const p of (msg.peers || [])) this.peers.set(p.id, p);
         this.renderLobby();
+        if (!msg.host) UI.toast('已加入房间 ' + msg.code, '#8fe6ff');
         if (msg.started) {
           UI.toast('房间已开局，正在同步…', '#ffd257');
           this.beginGame();
