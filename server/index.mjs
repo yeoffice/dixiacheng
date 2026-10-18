@@ -313,6 +313,31 @@ function lanAddresses() {
   return out;
 }
 
+server.on('error', err => {
+  if (err && err.code === 'EADDRINUSE') {
+    console.error('');
+    console.error('  [X] 端口 ' + PORT + ' 已被占用');
+    console.error('');
+    console.error('      很可能已经有一个服务器在运行了。先打开浏览器看看：');
+    console.error('        http://localhost:' + PORT + '/');
+    console.error('');
+    console.error('      想确认是谁占着这个端口，在另一个窗口运行：');
+    console.error('        netstat -ano | findstr :' + PORT);
+    console.error('      再结束对应进程（把 <pid> 换成查到的数字）：');
+    console.error('        taskkill /PID <pid> /F');
+    console.error('');
+    console.error('      或者换个端口启动：');
+    console.error('        set PORT=8081 && node server\\index.mjs');
+    console.error('');
+    process.exit(1);
+    return;
+  }
+  console.error('');
+  console.error('  [X] 服务器启动失败：' + (err && err.message ? err.message : err));
+  console.error('');
+  process.exit(1);
+});
+
 server.listen(PORT, () => {
   console.log('');
   console.log('  地牢骑士联机服务已启动');

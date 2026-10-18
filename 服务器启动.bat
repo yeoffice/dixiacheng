@@ -71,6 +71,25 @@ exit /b 1
 echo Game root: %CD%
 echo.
 
+rem 端口被占通常意味着服务器已经在跑了
+netstat -ano | findstr ":8080" | findstr "LISTENING" >nul 2>nul
+if not errorlevel 1 (
+  echo [!] Port 8080 is already in use.
+  echo.
+  echo     The server may already be running. Open this in a browser:
+  echo       http://localhost:8080/
+  echo.
+  echo     If that does not open the game, find and stop the old process:
+  echo       netstat -ano ^| findstr :8080
+  echo       taskkill /PID ^<pid^> /F
+  echo.
+  echo     Or start on another port:
+  echo       set PORT=8081
+  echo       node server\index.mjs
+  echo.
+  exit /b 1
+)
+
 where node >nul 2>nul
 if errorlevel 1 (
   echo [X] Node.js is NOT installed, or not in PATH.
