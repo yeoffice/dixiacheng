@@ -39,6 +39,7 @@ const Net = {
   timedOut: false,
   _sentDown: false,
   _downToast: 0,
+  _ghostBullets: new Map(),
 
   /* ---------------- 地址与工具 ---------------- */
   savedUrl() {
@@ -241,14 +242,39 @@ const Net = {
 
   /* ---------------- 连接 ---------------- */
   connect(url, onOpen) {
-    if (this.connecting) return;
+    if (this.connecting) {
+      // 上次连接若异常卡死，8 秒后允许重试，避免永远停在"连接中"
+      if (Date.now() - (this._connectAt || 0) < 8000) return;
+      this.connecting = false;
+    }
+
+    // https 页面禁止 ws://，浏览器会静默拦截，表现为一直"连接中"
+    try {
+      if (typeof location !== 'undefined' && location.protocol === 'https:' && /^ws:\/\//i.test(url)) {
+        this.lastErr = '这个页面是 https，浏览器不允许连 ws://。'
+          + '请把地址改成 wss://，或者直接用 http://' + (location.hostname || '<服务器IP>') + ':8080/ 打开游戏';
+        this.renderLobby('<span class="bad">' + escapeHtml(this.lastErr) + '</span>');
+        this.startListPolling();
+        return;
+      }
+      // file:// 打开时 localhost 指向玩家自己的电脑
+      if (typeof location !== 'undefined' && location.protocol === 'file:' && /\/\/(localhost|127\.0\.0\.1)(:|\/)/i.test(url)) {
+        this.lastErr = '你是用本地文件打开的，localhost 指的是你自己的电脑。'
+          + '请把服务器地址改成 ws://<服务器IP>:8080';
+        this.renderLobby('<span class="bad">' + escapeHtml(this.lastErr) + '</span>');
+        return;
+      }
+    } catch (e) { /* ignore */ }
+
     this.connecting = true;
+    this._connectAt = Date.now();
     this.lastErr = '';
     let ws;
     try { ws = new WebSocket(url); } catch (e) {
       this.connecting = false;
       this.lastErr = '地址无效：' + url;
       this.renderLobby('<span class="bad">' + this.lastErr + '</span>');
+      this.startListPolling();
       return;
     }
     this.ws = ws;
@@ -307,7 +333,7 @@ const Net = {
     this._url = url;
     this.saveUrl(url);
     this.connect(url, () => this.send({ t: 'create', name: this.name }));
-    this.renderLobby('正在连接…');
+    this.renderLobby('正在连接 ' + escapeHtml(url) + ' …');
   },
 
   joinRoom(url, code, name) {
@@ -318,7 +344,7 @@ const Net = {
     this._url = url;
     this.saveUrl(url);
     this.connect(url, () => this.send({ t: 'join', code, name: this.name }));
-    this.renderLobby('正在加入 ' + code + '…');
+    this.renderLobby('正在连接 ' + escapeHtml(url) + ' 加入 ' + code + ' …');
   },
 
   leave() {
@@ -339,6 +365,7 @@ const Net = {
     this.ghosts.clear();
     this.remote.clear();
     this.taken.clear();
+    this._ghostBullets.clear();
   },
 
   /* ---------------- 消息 ---------------- */
@@ -406,6 +433,7 @@ const Net = {
     this.ghosts.clear();
     this.remote.clear();
     this.taken.clear();
+    this._ghostBullets.clear();
     this.timedOut = false;
     this._sentDown = false;
     this._downToast = 0;
@@ -426,6 +454,7 @@ const Net = {
         const p = world.player;
         const g = new Player(d.c || 'knight', p ? p.x + 36 : VW / 2, p ? p.y + 20 : VH / 2);
         g.spawnT = 0;
+        g._isGhost = true;
         g._inp = { mx: 0, my: 0, a: 0, f: 0, d: 0, q: 0, x: g.x, y: g.y };
         this.ghosts.set(from, g);
       }
@@ -436,7 +465,15 @@ const Net = {
       if (pk) pk.dead = true;
       return;
     }
-    if (d.t === 'coin') { Game.addCoins(d.v || 0); return; }
+    if (d.t === 'coin') {
+      // 以房主端这枚金币是否还在为前提：谁先被房主确认，谁算数
+      const pk = world.pickups.find(x => x.nid === d.i);
+      if (pk && !pk.dead) {
+        pk.dead = true;
+        Game.addCoins(d.v || 0);
+      }
+      return;
+    }
     if (d.t === 'spend') { Game.coins = Math.max(0, Game.coins - (d.v || 0)); return; }
     if (d.t === 'down') {
       const g = this.ghosts.get(from);
@@ -464,6 +501,11 @@ const Net = {
       g._inp.f = d.f ? 1 : 0;
       if (d.d) g._inp.d = 1;
       if (d.q) g._inp.q = 1;
+      if (typeof d.h === 'number') {
+        // 成员的血量由成员本地权威，这里只更新代理用于显示与判定
+        g.hp = Math.min(g.maxHp, Math.max(0, d.h));
+      }
+      if (typeof d.m === 'number' && d.m > 0) g.maxHp = d.m;
       if (typeof d.x === 'number') g._inp.x = d.x;
       if (typeof d.y === 'number') g._inp.y = d.y;
       return;
@@ -575,6 +617,8 @@ const Net = {
     this.applyEnemies(s.e);
     // 掉落物
     this.applyPickups(s.k);
+    // 房主的子弹（影子，只做视觉）
+    this.applyBullets(s.b);
   },
 
   applyEnemies(list) {
@@ -632,20 +676,59 @@ const Net = {
     }
   },
 
+  /* 成员端：房主的子弹以影子形式显示，命中仍由房主结算 */
+  applyBullets(list) {
+    if (!Array.isArray(list)) {
+      return;
+    }
+    const seen = new Set();
+    for (const d of list) {
+      seen.add(d.i);
+      let b = this._ghostBullets.get(d.i);
+      if (!b) {
+        b = {
+          nid: 0, netId: d.i, netGhost: true,
+          x: d.x, y: d.y, vx: d.vx, vy: d.vy,
+          angle: d.a || 0, speed: Math.hypot(d.vx, d.vy) || 600,
+          dmg: 0, r: d.r || 4, life: 999, maxLife: 999,
+          color: d.c || '#ffe066', proj: d.p || 'bolt',
+          owner: null, dead: false, t: 0,
+          rot: d.rt || 0, vr: 0, hit: new Set(),
+          pierce: 0, pierceLeft: 0, trailT: 0, fade: 1,
+          explode: 0, chain: 0, bounce: 0, homing: 0,
+        };
+        world.bullets.push(b);
+        this._ghostBullets.set(d.i, b);
+      }
+      b._nx = d.x; b._ny = d.y;
+      b.vx = d.vx; b.vy = d.vy;
+      if (typeof d.rt === 'number') b.rot = d.rt;
+    }
+    for (const [id, b] of [...this._ghostBullets]) {
+      if (!seen.has(id)) {
+        b.dead = true;
+        this._ghostBullets.delete(id);
+      }
+    }
+  },
+
   /* 本地拾取：成员要告诉房主，否则快照会把东西刷回来 */
   onLocalPickup(pk) {
     if (!this.on || !this.started) return;
     if (this.isHost) return;
     if (!pk || !pk.nid) return;
     this.taken.add(pk.nid);
+    // 金币走 coin 记账消息，房主端会在记账时顺手移除；
+    // 这里再发 take 会先把金币删掉，导致紧接着的记账找不到对象
+    if (pk.type === 'coin') return;
     this.sendRelay({ t: 'take', i: pk.nid });
   },
 
-  /* 金币共享：房主记账，成员上报 */
-  onCoinPickup(v) {
+  /* 金币共享：房主记账，成员上报（带编号，防止同一枚金币被两端各捡一次） */
+  onCoinPickup(v, nid) {
     if (!this.on || !this.started) return;
     if (this.isHost) { Game.addCoins(v || 0); return; }
-    this.sendRelay({ t: 'coin', v: v || 0 });
+    this.sendRelay({ t: 'coin', v: v || 0, i: nid });
   },
 
   /* 倒地救援：靠近倒地队友按 E */
@@ -720,6 +803,8 @@ const Net = {
           my: +(+Input.move.y).toFixed(2),
           a: +(+p.aimAngle).toFixed(3),
           f: Input.firing ? 1 : 0,
+          h: Math.round(p.hp),
+          m: Math.round(p.maxHp),
           d: Input.wasPressed('Space') ? 1 : 0,
           q: Input.wasPressed('KeyQ') ? 1 : 0,
           x: Math.round(p.x),
@@ -847,6 +932,20 @@ const Net = {
         w: pk.weapon ? pk.weapon.baseId : '', tr: pk.weapon ? pk.weapon.tier : 0,
       });
     }
+    // 子弹：只发房主自己打出的，成员本地已经有一份自己的
+    const shots = [];
+    for (const b of world.bullets) {
+      if (!b || b.dead || b.netGhost) continue;
+      if (b.owner && b.owner._isGhost) continue;   // 成员子弹在成员端本地显示
+      if (shots.length >= 48) break;
+      shots.push({
+        i: b.nid, x: Math.round(b.x), y: Math.round(b.y),
+        vx: Math.round(b.vx), vy: Math.round(b.vy),
+        r: b.r, c: b.color, p: b.proj,
+        a: +(+b.angle || 0).toFixed(2), rt: +(+b.rot || 0).toFixed(2),
+      });
+    }
+
     this.sendRelay({
       t: 'state', f: Game.floor,
       r: world.room ? [world.room.gx, world.room.gy] : null,
@@ -854,7 +953,7 @@ const Net = {
       sp: world.room && world.room.spawned ? 1 : 0,
       po: world.portal ? 1 : 0,
       cn: Game.coins,
-      p: players, e: enemies, k: drops,
+      p: players, e: enemies, k: drops, b: shots,
     });
     this.states++;
   },

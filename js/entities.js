@@ -5,8 +5,10 @@
 world.effects = world.effects || [];
 
 /* ---------------------------- 玩家子弹 ---------------------------- */
+let _bulletSeq = 0;
 function spawnBullet(o) {
   const b = {
+    nid: ++_bulletSeq,
     x: o.x, y: o.y,
     vx: Math.cos(o.angle) * (o.speed || 600),
     vy: Math.sin(o.angle) * (o.speed || 600),
@@ -31,6 +33,16 @@ function updateBullets(dt) {
   for (let i = list.length - 1; i >= 0; i--) {
     const b = list[i];
     if (b.dead) { list.splice(i, 1); continue; }
+    // 联机影子子弹：房主的子弹在本端只做视觉，命中一律由房主结算
+    if (b.netGhost) {
+      if (b._nx != null) {
+        b.x += (b._nx - b.x) * 0.45;
+        b.y += (b._ny - b.y) * 0.45;
+      }
+      b.t += dt;
+      b.rot += b.vr * dt;
+      continue;
+    }
     b.t += dt;
     b.life -= dt;
     if (b.life <= 0) { b.dead = true; list.splice(i, 1); continue; }
@@ -480,8 +492,8 @@ class Pickup {
     if (typeof Net !== 'undefined' && Net.on) Net.onLocalPickup(this);
     switch (this.type) {
       case 'coin':
-        // 联机：金币进全队公共池，由房主统一记账
-        if (typeof Net !== 'undefined' && Net.on && Net.started) Net.onCoinPickup(this.value);
+        // 联机：金币进全队公共池，由房主统一记账（带编号，防止两端各捡一次）
+        if (typeof Net !== 'undefined' && Net.on && Net.started) Net.onCoinPickup(this.value, this.nid);
         else Game.addCoins(this.value);
         Sfx.play('coin');
         FX.text(this.x, this.y - 14, '+' + this.value, '#ffd257', 12);

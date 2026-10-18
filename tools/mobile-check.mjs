@@ -250,5 +250,6 @@ function insideViewport(g, tol = 1) {
   } finally {
     try { if (ws) ws.close(); } catch (e) { /* ignore */ }
     try { edge.kill(); } catch (e) { /* ignore */ }
+    try { fs.rmSync(userDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch (e) { /* ignore */ }
   }
 })();

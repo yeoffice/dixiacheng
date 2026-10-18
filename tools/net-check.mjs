@@ -1,6 +1,7 @@
 /* 联机端到端测试：真服务器 + 两个真浏览器页面
    验证：建房/加入、开局同步、队友出现、移动同步、怪物同步、队友开火在房主端结算 */
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 
 const root = path.resolve(process.argv[2] || '.');
@@ -294,12 +295,27 @@ async function firstPage(port) {
     ok(dmgAfter > dmgBefore, `房主选祝福同步到成员 (dmgMul ${dmgBefore.toFixed(3)} -> ${dmgAfter.toFixed(3)})`);
 
     /* ---------- 金币共享 ---------- */
-    const coinA0 = await A.eval('Game.coins');
-    await B.eval('Net.onCoinPickup(10); true');
+    await A.eval(`(()=>{
+      world.pickups.length = 0;
+      const p = world.player;
+      const pk = new Pickup('coin', p.x > VW / 2 ? 60 : VW - 60, p.y > VH / 2 ? 60 : VH - 60, { value: 10, vx: 0, vy: 0 });
+      pk.magnet = false;              // 别让房主自己磁吸走了
+      world.pickups.push(pk);
+      return true;
+    })()`);
     await sleep(500);
+    const coinA0 = await A.eval('Game.coins');
+    const pickedByB = await B.eval(`(()=>{
+      const pk = world.pickups.find(p => p.type === 'coin' && !p.dead);
+      if (!pk) return false;
+      pk.x = world.player.x; pk.y = world.player.y;
+      pk.collect(world.player);
+      return true;
+    })()`);
+    await sleep(700);
     const coinA1 = await A.eval('Game.coins');
     const coinB1 = await B.eval('Game.coins');
-    ok(coinA1 >= coinA0 + 10, `成员捡金币计入房主账本 (${coinA0} -> ${coinA1})`);
+    ok(pickedByB === true && coinA1 >= coinA0 + 10, `成员捡金币计入房主账本 (${coinA0} -> ${coinA1})`);
     ok(coinB1 === coinA1, `金币池两端一致 (成员 ${coinB1} / 房主 ${coinA1})`);
 
     /* ---------- 倒地救援 ---------- */
@@ -316,6 +332,35 @@ async function firstPage(port) {
     ok(await B.waitFor('world.player.dead === false && world.player.hp > 0', 6000), '被救成员复活并恢复生命');
     const bHp = await B.eval('Math.round(world.player.hp)');
     ok(bHp > 0, '复活后生命值 ' + bHp);
+
+    /* ---------- 子弹同步 ---------- */
+    await A.eval('world.bullets.length = 0; Net._ghostBullets.clear(); true');
+    await B.eval('world.bullets.forEach(b => { if (b.netGhost) b.dead = true; }); true');
+    await A.eval('Input.mouse.down = true; Input.mouse.x = 760; Input.mouse.y = 300; true');
+    await sleep(1000);
+    await A.eval('Input.mouse.down = false; true');
+    await sleep(400);
+    const ghostShots = await B.eval('world.bullets.filter(b => b.netGhost).length');
+    ok(ghostShots > 0, `房主子弹同步到成员端 (${ghostShots} 颗影子弹)`);
+    const ghostIsVisualOnly = await B.eval('world.bullets.filter(b => b.netGhost).every(b => b.dmg === 0)');
+    ok(ghostIsVisualOnly === true, '影子子弹不参与伤害结算（dmg=0）');
+
+    /* ---------- 金币不会被两端重复记账 ---------- */
+    const coinNid = await A.eval(`(()=>{
+      world.pickups.length = 0;
+      const pk = new Pickup('coin', 500, 300, { value: 9, vx: 0, vy: 0 });
+      world.pickups.push(pk);
+      return pk.nid;
+    })()`);
+    await sleep(400);
+    const coinBefore = await A.eval('Game.coins');
+    await A.eval('(()=>{const pk = world.pickups.find(p => p.nid === ' + coinNid + '); if (pk) { pk.x = 500; pk.y = 300; pk.collect(world.player); } return true;})()');
+    const coinMid = await A.eval('Game.coins');
+    ok(coinMid > coinBefore, `房主拾取金币入账 (${coinBefore} -> ${coinMid})`);
+    await B.eval(`Net.sendRelay({ t: 'coin', v: 9, i: ${coinNid} }); true`);
+    await sleep(500);
+    const coinAfter = await A.eval('Game.coins');
+    ok(coinAfter === coinMid, `已捡走的金币不会被另一端重复记账（保持 ${coinAfter}）`);
 
     /* ---------- 掉线处理 ---------- */
     await B.eval('Net.close(); true');
@@ -338,6 +383,9 @@ async function firstPage(port) {
     try { if (B) B.ws.close(); } catch (e) { /* ignore */ }
     try { edgeA.kill(); } catch (e) { /* ignore */ }
     try { edgeB.kill(); } catch (e) { /* ignore */ }
+    for (const d of [userDir + '-a', userDir + '-b']) {
+      try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch (e) { /* ignore */ }
+    }
     try { srv.kill(); } catch (e) { /* ignore */ }
   }
 })();
